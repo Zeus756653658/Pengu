@@ -102,14 +102,14 @@ android {
             )
             if (keystorePropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("githubPublish")
+            } else if (System.getenv("CI") == null) {
+                signingConfig = signingConfigs.getByName("debug")
             }
         }
         debug {
             if (keystorePropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("githubPublish")
             }
-            applicationIdSuffix = ".debug"
-            versionNameSuffix = "-debug"
         }
     }
 
@@ -136,8 +136,9 @@ android {
 
     applicationVariants.all {
         outputs.all {
+            val cleanVariantName = name.removeSuffix("-debug").removeSuffix("-release")
             (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl).outputFileName =
-                "Pengu-${defaultConfig.versionName}-${name}.apk"
+                "Pengu-${defaultConfig.versionName}-${cleanVariantName}.apk"
         }
     }
 
