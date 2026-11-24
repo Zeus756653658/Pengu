@@ -47,7 +47,7 @@ android {
         applicationId = "com.devrayan.pengu"
         minSdk = 24
         targetSdk = 35
-        versionCode = 100_000_200
+        versionCode = 100_000_210
         check(versionCode == currentVersionCode)
 
         versionName = baseVersionName
@@ -110,7 +110,6 @@ android {
             }
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
-            resValue("string", "app_name", "Pengu Debug")
         }
     }
 
@@ -125,7 +124,6 @@ android {
         create("githubPreview") {
             dimension = "publishChannel"
             applicationIdSuffix = ".preview"
-            resValue("string", "app_name", "Pengu Preview")
         }
 
         create("fdroid") {

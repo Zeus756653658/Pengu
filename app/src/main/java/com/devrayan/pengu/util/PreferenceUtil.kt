@@ -9,8 +9,8 @@ import com.google.android.material.color.DynamicColors
 import com.devrayan.pengu.App
 import com.devrayan.pengu.App.Companion.applicationScope
 import com.devrayan.pengu.App.Companion.context
-import com.devrayan.pengu.App.Companion.isDebugBuild
 import com.devrayan.pengu.App.Companion.isFDroidBuild
+import com.devrayan.pengu.BuildConfig
 import com.devrayan.pengu.R
 import com.devrayan.pengu.database.objects.CommandTemplate
 import com.devrayan.pengu.download.Task
@@ -214,6 +214,7 @@ private val BooleanPreferenceDefaults =
         CONFIGURE to true,
         CELLULAR_DOWNLOAD to false,
         YT_DLP_AUTO_UPDATE to true,
+        AUTO_UPDATE to true,
         NOTIFICATION to true,
         EMBED_METADATA to true,
         USE_CUSTOM_AUDIO_PRESET to false,
@@ -230,7 +231,16 @@ private val IntPreferenceDefaults =
         AUDIO_CONVERSION_FORMAT to NOT_SPECIFIED,
         VIDEO_QUALITY to NOT_SPECIFIED,
         VIDEO_FORMAT to FORMAT_QUALITY,
-        UPDATE_CHANNEL to STABLE,
+        UPDATE_CHANNEL to
+            if (
+                BuildConfig.VERSION_NAME.let {
+                    it.contains("-alpha") || it.contains("-beta") || it.contains("-rc")
+                }
+            ) {
+                PRE_RELEASE
+            } else {
+                STABLE
+            },
         CONVERT_SUBTITLE to NOT_SPECIFIED,
         DOWNLOAD_TYPE_INITIALIZATION to USE_PREVIOUS_SELECTION,
         YT_DLP_UPDATE_CHANNEL to YT_DLP_NIGHTLY,
@@ -307,7 +317,6 @@ object PreferenceUtil {
     fun isAutoUpdateEnabled(): Boolean {
         return when {
             isFDroidBuild() -> false
-            isDebugBuild() -> false
             else -> AUTO_UPDATE.getBoolean()
         }
     }

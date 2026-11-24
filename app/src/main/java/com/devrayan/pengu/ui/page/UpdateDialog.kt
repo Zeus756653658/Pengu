@@ -1,6 +1,12 @@
 package com.devrayan.pengu.ui.page
 
+import android.Manifest
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.rememberScrollState
@@ -39,18 +45,48 @@ fun UpdateDialog(onDismissRequest: () -> Unit, release: UpdateUtil.Release) {
         mutableStateOf(UpdateUtil.DownloadStatus.NotYet as UpdateUtil.DownloadStatus)
     }
     val context = LocalContext.current
-
     val scope = rememberCoroutineScope()
+
+    val settingsLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            UpdateUtil.installLatestApk()
+        }
+    val permissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                UpdateUtil.installLatestApk()
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (!context.packageManager.canRequestPackageInstalls()) {
+                    settingsLauncher.launch(
+                        Intent(
+                            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                            Uri.parse("package:${context.packageName}"),
+                        )
+                    )
+                } else {
+                    UpdateUtil.installLatestApk()
+                }
+            }
+        }
+
     UpdateDialogImpl(
         onDismissRequest = onDismissRequest,
-        title = release.name.toString(),
+        title = release.name?.takeIf { it.isNotBlank() } ?: release.tagName.orEmpty(),
         onConfirmUpdate = {
             scope.launch(Dispatchers.IO) {
                 runCatching {
                         UpdateUtil.downloadApk(release = release).collect { downloadStatus ->
                             currentDownloadStatus = downloadStatus
                             if (downloadStatus is UpdateUtil.DownloadStatus.Finished) {
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                    if (context.packageManager.canRequestPackageInstalls()) {
+                                        UpdateUtil.installLatestApk()
+                                    } else {
+                                        permissionLauncher.launch(
+                                            Manifest.permission.REQUEST_INSTALL_PACKAGES
+                                        )
+                                    }
+                                } else {
                                     UpdateUtil.installLatestApk()
                                 }
                             }
@@ -64,7 +100,7 @@ fun UpdateDialog(onDismissRequest: () -> Unit, release: UpdateUtil.Release) {
                     }
             }
         },
-        releaseNote = release.body.toString(),
+        releaseNote = release.body.orEmpty(),
         downloadStatus = currentDownloadStatus,
     )
 }
@@ -78,7 +114,11 @@ fun UpdateDialogImpl(
     downloadStatus: UpdateUtil.DownloadStatus,
 ) {
     AlertDialog(
-        onDismissRequest = {},
+        onDismissRequest = {
+            if (downloadStatus !is UpdateUtil.DownloadStatus.Progress) {
+                onDismissRequest()
+            }
+        },
         title = { Text(title) },
         icon = { Icon(Icons.Outlined.NewReleases, null) },
         confirmButton = {

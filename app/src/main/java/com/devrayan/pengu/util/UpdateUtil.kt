@@ -8,17 +8,19 @@ import android.util.Log
 import androidx.core.content.FileProvider
 import com.devrayan.pengu.App
 import com.devrayan.pengu.App.Companion.context
+import com.devrayan.pengu.BuildConfig
 import com.devrayan.pengu.R
 import com.devrayan.pengu.util.FileUtil.getFileProvider
 import com.devrayan.pengu.util.PreferenceUtil.getInt
 import com.devrayan.pengu.util.PreferenceUtil.updateLong
 import com.yausername.youtubedl_android.YoutubeDL
 import java.io.File
+import java.io.IOException
+import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
@@ -39,19 +41,38 @@ object UpdateUtil {
     private const val X64 = "x86_64"
     private const val TAG = "UpdateUtil"
 
-    private val client = OkHttpClient()
+    private val userAgent = "Pengu-Android/${BuildConfig.VERSION_NAME}"
+
+    private val client =
+        OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .build()
+
     private val requestForLatestRelease =
         Request.Builder()
             .url("https://api.github.com/repos/${OWNER}/${REPO}/releases/latest")
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", userAgent)
             .build()
 
     private val requestForReleases =
-        Request.Builder().url("https://api.github.com/repos/${OWNER}/${REPO}/releases").build()
+        Request.Builder()
+            .url("https://api.github.com/repos/${OWNER}/${REPO}/releases")
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", userAgent)
+            .build()
 
     private const val ytdlpNightlyBuildRelease =
         "https://api.github.com/repos/yt-dlp/yt-dlp-nightly-builds/releases/latest"
 
     private val jsonFormat = Json { ignoreUnknownKeys = true }
+
+    fun Release.resolvedVersion(): Version =
+        name.toVersionOrNull() ?: tagName.toVersionOrNull() ?: EMPTY_VERSION
+
+    fun Release.displayTitle(): String =
+        name?.takeIf { it.isNotBlank() } ?: tagName.orEmpty()
 
     suspend fun updateYtDlp(): YoutubeDL.UpdateStatus? =
         withContext(Dispatchers.IO) {
@@ -74,21 +95,28 @@ object UpdateUtil {
                 }
         }
 
-    private fun getLatestRelease(): Release =
-        client.newCall(requestForReleases).execute().body.use {
-            val releaseList = jsonFormat.decodeFromString<List<Release>>(it.string())
+    private fun getLatestRelease(): Release? =
+        client.newCall(requestForReleases).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IOException("GitHub API error: HTTP ${response.code}")
+            }
+            val releaseList = jsonFormat.decodeFromString<List<Release>>(response.body.string())
             val stable = UPDATE_CHANNEL.getInt() == STABLE
-            val latestRelease =
-                releaseList
-                    .filter { if (stable) it.name.toVersion() is Version.Stable else true }
-                    .maxByOrNull { it.name.toVersion() } ?: throw Exception("null response")
-            latestRelease
+            releaseList
+                .filter { release ->
+                    release.draft != true &&
+                        release.resolvedVersion() != EMPTY_VERSION &&
+                        (!stable ||
+                            (release.preRelease != true &&
+                                release.resolvedVersion() is Version.Stable))
+                }
+                .maxByOrNull { it.resolvedVersion() }
         }
 
     fun checkForUpdate(context: Context = App.context): Release? {
         val currentVersion = context.getCurrentVersion()
-        val latestRelease = getLatestRelease()
-        val latestVersion = latestRelease.name.toVersion()
+        val latestRelease = getLatestRelease() ?: return null
+        val latestVersion = latestRelease.resolvedVersion()
         return if (currentVersion < latestVersion) latestRelease else null
     }
 
@@ -139,87 +167,134 @@ object UpdateUtil {
             }
         }
 
+    private fun selectApkAsset(assets: List<AssetsItem>?): AssetsItem? {
+        val apkAssets =
+            assets
+                ?.filter {
+                    it.name?.endsWith(".apk", ignoreCase = true) == true &&
+                        !it.browserDownloadUrl.isNullOrBlank()
+                }
+                .orEmpty()
+        if (apkAssets.isEmpty()) return null
+
+        val isDebug = App.isDebugBuild()
+        val preferredPool =
+            apkAssets
+                .filter { asset ->
+                    val name = asset.name.orEmpty().lowercase()
+                    if (isDebug) name.contains("debug") else !name.contains("debug")
+                }
+                .ifEmpty { apkAssets }
+
+        for (abi in Build.SUPPORTED_ABIS) {
+            preferredPool.firstOrNull { it.name?.contains(abi, ignoreCase = true) == true }?.let {
+                return it
+            }
+        }
+
+        return preferredPool.firstOrNull {
+            it.name?.contains("universal", ignoreCase = true) == true
+        } ?: preferredPool.firstOrNull()
+    }
+
     suspend fun downloadApk(
         context: Context = App.context,
         release: Release,
     ): Flow<DownloadStatus> =
         withContext(Dispatchers.IO) {
+            val latestApk = context.getLatestApk()
+            latestApk.parentFile?.mkdirs()
+
             val apkVersion =
-                context.packageManager
-                    .getPackageArchiveInfo(context.getLatestApk().absolutePath, 0)
-                    ?.versionName
-                    .toVersion()
-
-            Log.d(TAG, apkVersion.toString())
-
-            if (apkVersion >= release.name.toVersion()) {
-                return@withContext flow<DownloadStatus> {
-                    emit(DownloadStatus.Finished(context.getLatestApk()))
+                if (latestApk.exists()) {
+                    context.packageManager
+                        .getPackageArchiveInfo(latestApk.absolutePath, 0)
+                        ?.versionName
+                        .toVersion()
+                } else {
+                    EMPTY_VERSION
                 }
-            }
 
-            val abiList = Build.SUPPORTED_ABIS
-            val preferredArch = abiList.firstOrNull() ?: return@withContext emptyFlow()
+            Log.d(TAG, "Cached APK version: $apkVersion")
+
+            val targetVersion = release.resolvedVersion()
+            if (apkVersion >= targetVersion && targetVersion != EMPTY_VERSION) {
+                return@withContext flow { emit(DownloadStatus.Finished(latestApk)) }
+            }
 
             val targetUrl =
-                release.assets
-                    ?.find {
-                        return@find it.name?.contains(preferredArch) ?: false
-                    }
-                    ?.browserDownloadUrl ?: return@withContext emptyFlow()
-            val request = Request.Builder().url(targetUrl).build()
-            try {
-                val response = client.newCall(request).execute()
-                val responseBody = response.body
-                return@withContext responseBody.downloadFileWithProgress(context.getLatestApk())
-            } catch (e: Exception) {
-                e.printStackTrace()
+                selectApkAsset(release.assets)?.browserDownloadUrl
+                    ?: throw IOException(
+                        "No compatible APK asset found in release ${release.displayTitle()}"
+                    )
+            val request =
+                Request.Builder()
+                    .url(targetUrl)
+                    .header("User-Agent", userAgent)
+                    .build()
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                response.close()
+                throw IOException("Failed to download APK: HTTP ${response.code}")
             }
-            emptyFlow()
+            response.body.downloadFileWithProgress(latestApk)
         }
 
     private fun ResponseBody.downloadFileWithProgress(saveFile: File): Flow<DownloadStatus> =
         flow {
                 emit(DownloadStatus.Progress(0))
 
-                var deleteFile = true
+                val tempFile = File(saveFile.parentFile, "${saveFile.name}.tmp")
+                var completed = false
 
                 try {
-                    byteStream().use { inputStream ->
-                        saveFile.outputStream().use { outputStream ->
-                            val totalBytes = contentLength()
-                            val data = ByteArray(8_192)
-                            var progressBytes = 0L
+                    this@downloadFileWithProgress.use { body ->
+                        body.byteStream().use { inputStream ->
+                            tempFile.outputStream().use { outputStream ->
+                                val totalBytes = body.contentLength()
+                                val data = ByteArray(8_192)
+                                var progressBytes = 0L
 
-                            while (true) {
-                                val bytes = inputStream.read(data)
+                                while (true) {
+                                    val bytes = inputStream.read(data)
+                                    if (bytes == -1) break
 
-                                if (bytes == -1) {
-                                    break
+                                    outputStream.write(data, 0, bytes)
+                                    progressBytes += bytes
+                                    if (totalBytes > 0L) {
+                                        emit(
+                                            DownloadStatus.Progress(
+                                                percent =
+                                                    ((progressBytes * 100L) / totalBytes)
+                                                        .toInt()
+                                                        .coerceIn(0, 100)
+                                            )
+                                        )
+                                    }
                                 }
 
-                                outputStream.channel
-                                outputStream.write(data, 0, bytes)
-                                progressBytes += bytes
-                                emit(
-                                    DownloadStatus.Progress(
-                                        percent = ((progressBytes * 100) / totalBytes).toInt()
-                                    )
-                                )
-                            }
-
-                            when {
-                                progressBytes < totalBytes -> throw Exception("missing bytes")
-                                progressBytes > totalBytes -> throw Exception("too many bytes")
-                                else -> deleteFile = false
+                                if (totalBytes > 0L) {
+                                    when {
+                                        progressBytes < totalBytes ->
+                                            throw IOException("Incomplete download: missing bytes")
+                                        progressBytes > totalBytes ->
+                                            throw IOException("Corrupt download: extra bytes")
+                                    }
+                                }
                             }
                         }
                     }
 
+                    if (saveFile.exists()) saveFile.delete()
+                    if (!tempFile.renameTo(saveFile)) {
+                        tempFile.copyTo(saveFile, overwrite = true)
+                        tempFile.delete()
+                    }
+                    completed = true
                     emit(DownloadStatus.Finished(saveFile))
                 } finally {
-                    if (deleteFile) {
-                        saveFile.delete()
+                    if (!completed) {
+                        tempFile.delete()
                     }
                 }
             }
@@ -261,7 +336,7 @@ object UpdateUtil {
     private val pattern = Pattern.compile("""v?(\d+)\.(\d+)\.(\d+)(-(\w+)\.(\d+))?""")
     private val EMPTY_VERSION = Version.Stable()
 
-    fun String?.toVersion(): Version =
+    fun String?.toVersionOrNull(): Version? =
         this?.run {
             val matcher = pattern.matcher(this)
             if (matcher.find()) {
@@ -275,8 +350,10 @@ object UpdateUtil {
                     "rc" -> Version.ReleaseCandidate(major, minor, patch, buildNumber)
                     else -> Version.Stable(major, minor, patch)
                 }
-            } else EMPTY_VERSION
-        } ?: EMPTY_VERSION
+            } else null
+        }
+
+    fun String?.toVersion(): Version = toVersionOrNull() ?: EMPTY_VERSION
 
     sealed class Version(val major: Int, val minor: Int, val patch: Int, val build: Int = 0) :
         Comparable<Version> {
@@ -342,5 +419,10 @@ object UpdateUtil {
 
         override operator fun compareTo(other: Version): Int =
             this.toNumber().compareTo(other.toNumber())
+
+        override fun equals(other: Any?): Boolean =
+            other is Version && this.toNumber() == other.toNumber()
+
+        override fun hashCode(): Int = toNumber().hashCode()
     }
 }

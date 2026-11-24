@@ -81,7 +81,7 @@ fun AppUpdater() {
                 showUpdateDialog = false
                 updateJob?.cancel()
             },
-            title = release.name.toString(),
+            title = release.name?.takeIf { it.isNotBlank() } ?: release.tagName.orEmpty(),
             onConfirmUpdate = {
                 updateJob =
                     scope.launch(Dispatchers.IO) {
@@ -106,7 +106,7 @@ fun AppUpdater() {
                             }
                     }
             },
-            releaseNote = release.body.toString(),
+            releaseNote = release.body.orEmpty(),
             downloadStatus = currentDownloadStatus,
         )
     }
