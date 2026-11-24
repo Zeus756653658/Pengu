@@ -57,6 +57,8 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/v')
       uses: softprops/action-gh-release@v2
       with:
+        name: Pengu ${{ github.ref_name }}
+        body_path: release/changelog.md
         files: app/build/outputs/apk/generic/release/*.apk
         prerelease: ${{ contains(github.ref_name, '-') }}
         generate_release_notes: true
