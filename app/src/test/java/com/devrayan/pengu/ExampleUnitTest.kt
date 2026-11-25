@@ -36,12 +36,14 @@ class ExampleUnitTest {
         val rc1 = "1.0.0-rc.1".toVersion()
         val stable = "1.0.0".toVersion()
         val next = "1.0.1".toVersion()
+        val release110 = "1.1.0".toVersion()
 
         assertEquals(beta1, beta1Debug)
         assertTrue(beta1 < beta2)
         assertTrue(beta2 < rc1)
         assertTrue(rc1 < stable)
         assertTrue(stable < next)
+        assertTrue(next < release110)
 
         val releaseWithTitleOnly = com.devrayan.pengu.util.UpdateUtil.Release(
             tagName = "v1.0.0-beta.2",

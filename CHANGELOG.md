@@ -2,6 +2,11 @@
 
 All notable changes to **Pengu** will be documented in this file.
 
+## [1.1.0] - 2026-11-26
+### Release Highlights
+- **Stable Version 1.1.0**: Promoted **Pengu** to stable `1.1.0` (`versionCode 101000400`) with stable release channel auto-updates enabled by default.
+- **Complete VidSnap UI & Media Suite**: Includes Quick Video/MP3 quality picker, Live Progress tracker, Downloads storage bar & filter tabs, Built-in "Now Playing" Video & MP3 player, In-App Browser downloader, Offline FFmpeg MP3 & Trim tools, Smart Clipboard link auto-detect, and animated startup splash.
+
 ## [1.0.0-beta.1] - 2026-11-26
 ### Release Highlights
 - **Version 1.0.0-beta.1**: Updated versioning and build metadata cleanly as **Pengu**.

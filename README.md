@@ -2,7 +2,7 @@
 
 ### Modern Video & Audio Downloader for Android
 
-**Version:** `1.0.0-beta.1`  
+**Version:** `1.1.0`  
 **Repository:** [github.com/Zeus756653658/Pengu](https://github.com/Zeus756653658/Pengu)  
 **Publisher / Developer:** **Dev Rayan**  
 **License:** [GNU General Public License v3.0](LICENSE) (Open Source)

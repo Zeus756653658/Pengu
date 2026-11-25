@@ -47,7 +47,7 @@ android {
         applicationId = "com.devrayan.pengu"
         minSdk = 24
         targetSdk = 35
-        versionCode = 100_000_210
+        versionCode = 101_000_400
         check(versionCode == currentVersionCode)
 
         versionName = baseVersionName

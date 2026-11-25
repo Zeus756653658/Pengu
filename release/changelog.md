@@ -1,7 +1,7 @@
-# Pengu v1.0.0-beta.1 — Release Notes
+# Pengu v1.1.0 — Release Notes
 
 ## Title
-**Pengu — Modern Video & Audio Downloader (`1.0.0-beta.1`)**
+**Pengu — Modern Video & Audio Downloader (`1.1.0`)**
 
 ---
 
@@ -9,7 +9,7 @@
 **Pengu** is a fast, clean, and modern open-source Android video and audio downloader built with **Kotlin** and **Jetpack Compose (Material 3)**. Powered by `yt-dlp`, `FFmpeg`, and `aria2c`, Pengu lets you download high-resolution videos (up to 4K) and extract crisp audio (MP3, M4A, FLAC, OPUS, OGG, WAV) from 1,000+ supported platforms with full metadata & thumbnail embedding — completely free, without ads or trackers.
 
 - **App Name:** Pengu
-- **Version:** `1.0.0-beta.1`
+- **Version:** `1.1.0`
 - **Package ID:** `com.devrayan.pengu`
 - **Developer / Publisher:** Dev Rayan
 - **Repository:** https://github.com/Zeus756653658/Pengu
@@ -17,7 +17,8 @@
 
 ---
 
-## Changelog (`1.0.0-beta.1`)
+## Changelog (`1.1.0`)
+- **Stable v1.1.0 Release**: Promoted Pengu to stable version `1.1.0` with stable GitHub Releases auto-update tracking by default.
 - **Complete VidSnap-Style UI Experience**:
   - **Home Hub & Quick Sheet**: Gradient hero download hub (`Download anything, anytime.`), Video/MP3 **Quick Quality Picker** sheet (4K / 1080p / 720p / 480p / 360p & MP3 320k / M4A / FLAC / OPUS), quick Browser & Tools strip, supported platforms bar, and **Recent Downloads** preview cards.
   - **Live Progress Tracker**: Dedicated `Progress` tab with `Active` / `Completed` tabs, live download speed hero banner, circular progress ring, pause/cancel/resume controls, and custom commands access.
@@ -37,7 +38,7 @@
 ---
 
 ## Which APK Should I Install?
-- **`Pengu-1.0.0-beta.1-generic-arm64-v8a.apk`** — Best for most modern Android phones (64-bit ARM, smallest recommended build).
-- **`Pengu-1.0.0-beta.1-generic-armeabi-v7a.apk`** — For older 32-bit Android devices.
-- **`Pengu-1.0.0-beta.1-generic-universal.apk`** — Works on all Android CPU architectures.
-- **`Pengu-1.0.0-beta.1-generic-x86_64.apk` / `x86.apk`** — For Android emulators and x86 tablets.
+- **`Pengu-1.1.0-generic-arm64-v8a.apk`** — Best for most modern Android phones (64-bit ARM, smallest recommended build).
+- **`Pengu-1.1.0-generic-armeabi-v7a.apk`** — For older 32-bit Android devices.
+- **`Pengu-1.1.0-generic-universal.apk`** — Works on all Android CPU architectures.
+- **`Pengu-1.1.0-generic-x86_64.apk` / `x86.apk`** — For Android emulators and x86 tablets.
