@@ -23,6 +23,10 @@
 - **Multi-Platform Support**: Download videos and audio from YouTube, Instagram, Twitter/X, TikTok, Reddit, Facebook, Vimeo, and over 1,000+ sites supported by [yt-dlp](https://github.com/yt-dlp/yt-dlp).
 - **High Resolution Downloads**: Supports up to 4K, 1080p, 720p, and 60fps video downloads.
 - **Audio Extraction**: Extract audio into MP3, M4A, FLAC, OPUS, OGG, or WAV formats.
+- **Built-in "Now Playing" Player**: Watch downloaded videos and listen to MP3 tracks with an animated audio waveform, playback speed control, seekbar, sharing, and quick trim/convert access.
+- **In-App Browser Downloader**: Browse YouTube, Instagram, TikTok, Facebook, X, and SoundCloud directly inside Pengu with automatic WebView login cookie sync and one-tap Page Download.
+- **Offline FFmpeg Media Tools**: Convert local videos to MP3 (128k / 192k / 320k) or trim videos and audio clips completely offline without internet access.
+- **Smart Clipboard Auto-Detect & Live Progress**: Floating one-tap banner detects copied media links on app focus, paired with a live download progress queue, storage bar, and Recent Downloads hub.
 - **Metadata & Artwork Embedding**: Automatically embed artist names, album info, subtitles, and high-quality cover art/thumbnails into audio and video files.
 - **Fast Multi-Threaded Downloads**: Built-in [aria2c](https://github.com/aria2/aria2) external downloader for maximum download speeds.
 - **Playlist & Batch Downloading**: Download entire playlists or batches with a single tap.
@@ -58,14 +62,11 @@ Clone the repository and build the APK using the Gradle wrapper:
 git clone https://github.com/Zeus756653658/Pengu.git
 cd Pengu
 
-# Debug APK
-./gradlew assembleGenericDebug
-
-# Release APK
+# Build Release APKs
 ./gradlew assembleGenericRelease
 ```
 
-The compiled APKs will be located in `app/build/outputs/apk/generic/` (and exported to `Desktop/Pengu_APKs/`).
+The compiled APKs will be located in `app/build/outputs/apk/generic/release/` (and exported to `Desktop/Pengu_APKs/`).
 
 ---
 

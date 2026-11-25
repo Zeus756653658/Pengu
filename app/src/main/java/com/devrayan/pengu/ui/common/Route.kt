@@ -30,9 +30,14 @@ object Route {
     const val SUBTITLE_PREFERENCES = "subtitle_preferences"
     const val AUTO_UPDATE = "auto_update"
     const val TROUBLESHOOTING = "troubleshooting"
+    const val PLAYER = "player"
+    const val BROWSER = "browser"
+    const val TOOLS = "tools"
 
     const val TASK_HASHCODE = "task_hashcode"
     const val TEMPLATE_ID = "template_id"
+    const val MEDIA_ID = "media_id"
+    const val BROWSER_URL = "browser_url"
 }
 
 infix fun String.arg(arg: String) = "$this/{$arg}"

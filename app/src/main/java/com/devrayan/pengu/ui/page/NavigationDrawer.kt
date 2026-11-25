@@ -22,11 +22,14 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.HourglassTop
 import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Subscriptions
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.rounded.BugReport
+import androidx.compose.material.icons.rounded.ContentCut
 import androidx.compose.material.icons.rounded.Cookie
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Info
@@ -185,6 +188,16 @@ fun NavigationDrawerSheetContent(
                 selected = currentRoute == Route.HOME,
             )
             NavigationDrawerItem(
+                label = { Text("Progress") },
+                icon = { Icon(Icons.Outlined.HourglassTop, null) },
+                onClick = {
+                    scope
+                        .launch { onDismissRequest() }
+                        .invokeOnCompletion { onNavigateToRoute(Route.DOWNLOAD_QUEUE) }
+                },
+                selected = currentRoute == Route.DOWNLOAD_QUEUE,
+            )
+            NavigationDrawerItem(
                 label = { Text(stringResource(R.string.downloads_history)) },
                 icon = { Icon(Icons.Outlined.Subscriptions, null) },
                 onClick = {
@@ -193,6 +206,26 @@ fun NavigationDrawerSheetContent(
                         .invokeOnCompletion { onNavigateToRoute(Route.DOWNLOADS) }
                 },
                 selected = currentRoute == Route.DOWNLOADS,
+            )
+            NavigationDrawerItem(
+                label = { Text("Browser Downloader") },
+                icon = { Icon(Icons.Outlined.Public, null) },
+                onClick = {
+                    scope
+                        .launch { onDismissRequest() }
+                        .invokeOnCompletion { onNavigateToRoute(Route.BROWSER) }
+                },
+                selected = currentRoute?.startsWith(Route.BROWSER) == true,
+            )
+            NavigationDrawerItem(
+                label = { Text("MP3 & Trim Tools") },
+                icon = { Icon(Icons.Rounded.ContentCut, null) },
+                onClick = {
+                    scope
+                        .launch { onDismissRequest() }
+                        .invokeOnCompletion { onNavigateToRoute(Route.TOOLS) }
+                },
+                selected = currentRoute == Route.TOOLS,
             )
             NavigationDrawerItem(
                 label = { Text(stringResource(R.string.custom_command)) },
@@ -363,14 +396,13 @@ fun NavigationRailContent(
         NavigationRailItemVariant(
             icon = {
                 Icon(
-                    if (currentTopDestination == Route.TASK_LIST) Icons.Filled.Terminal
-                    else Icons.Outlined.Terminal,
-                    stringResource(R.string.custom_command),
+                    Icons.Outlined.HourglassTop,
+                    "Progress",
                 )
             },
             modifier = Modifier,
-            selected = currentTopDestination == Route.TASK_LIST,
-            onClick = { onNavigateToRoute(Route.TASK_LIST) },
+            selected = currentTopDestination == Route.DOWNLOAD_QUEUE,
+            onClick = { onNavigateToRoute(Route.DOWNLOAD_QUEUE) },
         )
 
         NavigationRailItemVariant(

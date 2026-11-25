@@ -18,7 +18,14 @@
 ---
 
 ## Changelog (`1.0.0-beta.1`)
-- **Modern VidSnap-Style UI**: New gradient hero download hub (`Download anything, anytime.`), quick **Video Downloader** & **MP3 Downloader** cards, supported platforms bar, and 4-tab bottom navigation (`Home`, `Progress`, `Downloads`, `Settings`).
+- **Complete VidSnap-Style UI Experience**:
+  - **Home Hub & Quick Sheet**: Gradient hero download hub (`Download anything, anytime.`), Video/MP3 **Quick Quality Picker** sheet (4K / 1080p / 720p / 480p / 360p & MP3 320k / M4A / FLAC / OPUS), quick Browser & Tools strip, supported platforms bar, and **Recent Downloads** preview cards.
+  - **Live Progress Tracker**: Dedicated `Progress` tab with `Active` / `Completed` tabs, live download speed hero banner, circular progress ring, pause/cancel/resume controls, and custom commands access.
+  - **Upgraded Downloads Library**: Segmented `All | Videos | MP3` pill tabs, live device `Storage used` indicator bar, and one-tap playback inside the built-in player.
+- **Built-in "Now Playing" Video & MP3 Player**: Native video surface & audio player with animated waveform visualizer, seekbar, `-10s / +10s` skips, playback speed toggle (`1x / 1.25x / 1.5x / 2x`), Share, Trim/MP3 shortcut, and delete confirmation.
+- **In-App Browser Downloader**: Full WebView browser with quick platform bookmarks, automatic WebView cookies sync for login-gated reels/stories, and a floating **Download Page** button.
+- **Offline FFmpeg Media Tools**: Built-in offline **Video to MP3** converter and **Video/Audio Trimmer** powered by Pengu's bundled `FFmpeg` library.
+- **Smart Clipboard Link Auto-Detect & Splash**: Automatically detects copied video/audio links with a one-tap floating download banner on launch/resume, paired with a smooth animated Pengu splash intro.
 - **Custom Pengu Branding**: Official penguin launcher icon across all screen densities (`mdpi` to `xxxhdpi`), matching status-bar notification icon, and unified `Pengu` app naming across all builds.
 - **Upgraded Auto-Update System**:
   - Auto-update enabled by default and connected directly to `Zeus756653658/Pengu` GitHub Releases.

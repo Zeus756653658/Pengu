@@ -62,6 +62,10 @@ class VideoListViewModel : ViewModel() {
             list.associate { it.id to it.videoPath.getFileSize() }
         }
 
+    fun clickAllFilter() {
+        mutableStateFlow.update { it.copy(videoFilter = false, audioFilter = false) }
+    }
+
     fun clickVideoFilter() {
         if (mutableStateFlow.value.videoFilter)
             mutableStateFlow.update { it.copy(videoFilter = false) }

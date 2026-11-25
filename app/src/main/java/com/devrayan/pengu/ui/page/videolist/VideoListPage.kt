@@ -9,14 +9,19 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
@@ -26,6 +31,8 @@ import androidx.compose.foundation.lazy.grid.LazyGridItemSpanScope
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.ModalBottomSheetValue
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
@@ -35,6 +42,8 @@ import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.rememberModalBottomSheetState
 import androidx.compose.material3.BottomAppBar
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,6 +51,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.LargeTopAppBar
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -65,6 +75,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -76,7 +88,10 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.devrayan.pengu.ui.common.LocalDarkTheme
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.devrayan.pengu.App
@@ -134,7 +149,11 @@ private const val TAG = "VideoListPage"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun VideoListPage(viewModel: VideoListViewModel = koinViewModel(), onNavigateBack: () -> Unit) {
+fun VideoListPage(
+    viewModel: VideoListViewModel = koinViewModel(),
+    onOpenPlayer: (Int) -> Unit = {},
+    onNavigateBack: () -> Unit,
+) {
     val viewState by viewModel.stateFlow.collectAsStateWithLifecycle()
     val fullVideoList by viewModel.videoListFlow.collectAsStateWithLifecycle(emptyList())
     val searchedVideoList by
@@ -175,34 +194,13 @@ fun VideoListPage(viewModel: VideoListViewModel = koinViewModel(), onNavigateBac
     @Composable
     fun FilterChips(modifier: Modifier = Modifier) {
         Row(modifier.horizontalScroll(rememberScrollState()).selectableGroup()) {
-            Row(modifier = Modifier.padding(horizontal = 8.dp)) {
-                VideoFilterChip(
-                    selected = viewState.audioFilter,
-                    onClick = { viewModel.clickAudioFilter() },
-                    label = stringResource(id = R.string.audio),
-                )
-
-                VideoFilterChip(
-                    selected = viewState.videoFilter,
-                    onClick = { viewModel.clickVideoFilter() },
-                    label = stringResource(id = R.string.video),
-                )
-                if (filterSet.size > 1) {
-                    VerticalDivider(
-                        modifier =
-                            Modifier.padding(horizontal = 6.dp)
-                                .height(24.dp)
-                                .width(1f.dp)
-                                .align(Alignment.CenterVertically),
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+            Row(modifier = Modifier.padding(horizontal = 12.dp)) {
+                for (i in 0 until filterSet.size) {
+                    VideoFilterChip(
+                        selected = viewState.activeFilterIndex == i,
+                        onClick = { viewModel.clickExtractorFilter(i) },
+                        label = filterSet.elementAt(i),
                     )
-                    for (i in 0 until filterSet.size) {
-                        VideoFilterChip(
-                            selected = viewState.activeFilterIndex == i,
-                            onClick = { viewModel.clickExtractorFilter(i) },
-                            label = filterSet.elementAt(i),
-                        )
-                    }
                 }
             }
         }
@@ -449,7 +447,24 @@ fun VideoListPage(viewModel: VideoListViewModel = koinViewModel(), onNavigateBac
         LazyColumn(modifier = Modifier, state = lazyListState, contentPadding = innerPadding) {
             if (fullVideoList.isNotEmpty()) {
                 item {
-                    Column {
+                    val isDark = LocalDarkTheme.current.isDarkTheme()
+                    val totalDownloadsBytes = remember(fileSizeMap) { fileSizeMap.values.sum() }
+                    val deviceTotalBytes =
+                        remember {
+                            runCatching {
+                                    val dir =
+                                        java.io.File(App.videoDownloadDir).takeIf { it.exists() }
+                                            ?: context.filesDir
+                                    android.os.StatFs(dir.absolutePath).totalBytes
+                                }
+                                .getOrElse { 1L }
+                                .coerceAtLeast(1L)
+                        }
+                    val usageFraction =
+                        (totalDownloadsBytes.toFloat() / deviceTotalBytes.toFloat())
+                            .coerceIn(0.02f, 1f)
+
+                    Column(modifier = Modifier.fillMaxWidth()) {
                         AnimatedVisibility(visible = viewState.isSearching) {
                             SealSearchBar(
                                 modifier =
@@ -459,7 +474,97 @@ fun VideoListPage(viewModel: VideoListViewModel = koinViewModel(), onNavigateBac
                                 onValueChange = viewModel::updateSearchText,
                             )
                         }
-                        FilterChips(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp))
+
+                        // VidSnap Screen 4: All / Videos / MP3 segmented tabs
+                        Row(
+                            modifier =
+                                Modifier.fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(if (isDark) Color(0xFF1C1C22) else Color(0xFFF3F4F6))
+                                    .padding(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            val selectedTypeIdx =
+                                when {
+                                    viewState.videoFilter && !viewState.audioFilter -> 1
+                                    viewState.audioFilter && !viewState.videoFilter -> 2
+                                    else -> 0
+                                }
+                            listOf("All", "Videos", "MP3").forEachIndexed { idx, label ->
+                                val active = selectedTypeIdx == idx
+                                Box(
+                                    modifier =
+                                        Modifier.weight(1f)
+                                            .clip(RoundedCornerShape(11.dp))
+                                            .background(if (active) Color.White else Color.Transparent)
+                                            .clickable {
+                                                view.slightHapticFeedback()
+                                                when (idx) {
+                                                    0 -> viewModel.clickAllFilter()
+                                                    1 -> if (selectedTypeIdx != 1) viewModel.clickVideoFilter()
+                                                    2 -> if (selectedTypeIdx != 2) viewModel.clickAudioFilter()
+                                                }
+                                            }
+                                            .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                                        color =
+                                            if (active) Color(0xFF111827)
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+
+                        // VidSnap Screen 4: Storage used card
+                        Card(
+                            modifier =
+                                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors =
+                                CardDefaults.cardColors(
+                                    containerColor =
+                                        if (isDark) Color(0xFF1C1C22) else Color(0xFFF9FAFB)
+                                ),
+                        ) {
+                            Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text(
+                                        text = "Storage used",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Text(
+                                        text =
+                                            "${totalDownloadsBytes.toFileSizeText()} / ${deviceTotalBytes.toFileSizeText()}",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                LinearProgressIndicator(
+                                    progress = { usageFraction },
+                                    color = Color(0xFFD946EF),
+                                    trackColor =
+                                        if (isDark) Color(0xFF2C2C34) else Color(0xFFE5E7EB),
+                                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape),
+                                )
+                            }
+                        }
+
+                        if (filterSet.size > 1) {
+                            FilterChips(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp))
+                        }
                     }
                 }
             }
@@ -488,10 +593,14 @@ fun VideoListPage(viewModel: VideoListViewModel = koinViewModel(), onNavigateBac
                                     else selectedItemIds.add(id)
                                 },
                                 onClick = {
-                                    FileUtil.openFile(path = videoPath) {
-                                        ToastUtil.makeToastSuspend(
-                                            App.context.getString(R.string.file_unavailable)
-                                        )
+                                    if (java.io.File(videoPath).exists()) {
+                                        onOpenPlayer(id)
+                                    } else {
+                                        FileUtil.openFile(path = videoPath) {
+                                            ToastUtil.makeToastSuspend(
+                                                App.context.getString(R.string.file_unavailable)
+                                            )
+                                        }
                                     }
                                 },
                                 onLongClick = {

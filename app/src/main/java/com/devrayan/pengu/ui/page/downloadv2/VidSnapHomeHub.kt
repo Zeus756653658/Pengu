@@ -25,10 +25,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Audiotrack
+import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.outlined.ContentPaste
 import androidx.compose.material.icons.outlined.Language
@@ -63,36 +65,50 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.devrayan.pengu.R
+import com.devrayan.pengu.database.objects.DownloadedVideoInfo
 import com.devrayan.pengu.ui.common.LocalDarkTheme
+import com.devrayan.pengu.util.AUDIO_REGEX
+import com.devrayan.pengu.util.FileUtil.getFileSize
+import com.devrayan.pengu.util.toFileSizeText
 
-data class PlatformChip(val name: String, val iconColor: Color, val emoji: String)
+data class PlatformChip(
+    val name: String,
+    val iconColor: Color,
+    val emoji: String,
+    val browseUrl: String = "https://m.youtube.com",
+)
 
 val SupportedPlatformsList =
     listOf(
-        PlatformChip("YouTube", Color(0xFFFF0000), "🔴"),
-        PlatformChip("Instagram", Color(0xFFE1306C), "📸"),
-        PlatformChip("TikTok", Color(0xFF000000), "🎵"),
-        PlatformChip("Facebook", Color(0xFF1877F2), "📘"),
-        PlatformChip("Twitter / X", Color(0xFF1DA1F2), "🐦"),
-        PlatformChip("Reddit", Color(0xFFFF4500), "👽"),
-        PlatformChip("Vimeo", Color(0xFF1AB7EA), "🎬"),
-        PlatformChip("SoundCloud", Color(0xFFFF5500), "🎧"),
-        PlatformChip("1,000+ Sites", Color(0xFF7C3AED), "🌐"),
+        PlatformChip("YouTube", Color(0xFFFF0000), "🔴", "https://m.youtube.com"),
+        PlatformChip("Instagram", Color(0xFFE1306C), "📸", "https://www.instagram.com"),
+        PlatformChip("TikTok", Color(0xFF000000), "🎵", "https://www.tiktok.com"),
+        PlatformChip("Facebook", Color(0xFF1877F2), "📘", "https://m.facebook.com"),
+        PlatformChip("Twitter / X", Color(0xFF1DA1F2), "🐦", "https://x.com"),
+        PlatformChip("Reddit", Color(0xFFFF4500), "👽", "https://www.reddit.com"),
+        PlatformChip("Vimeo", Color(0xFF1AB7EA), "🎬", "https://vimeo.com"),
+        PlatformChip("SoundCloud", Color(0xFFFF5500), "🎧", "https://m.soundcloud.com"),
+        PlatformChip("1,000+ Sites", Color(0xFF7C3AED), "🌐", "https://www.google.com"),
     )
 
 /**
  * VidSnap-inspired modern media downloader home hub with vibrant gradient hero banner,
- * quick action video/audio downloader cards, supported platforms, and recent tasks.
+ * quick action video/audio downloader cards, browser & FFmpeg tools, supported platforms, and recent downloads.
  */
 @Composable
 fun VidSnapHomeHub(
     modifier: Modifier = Modifier,
+    recentDownloads: List<DownloadedVideoInfo> = emptyList(),
     onDownloadUrl: (String) -> Unit,
     onVideoDownloadClick: () -> Unit,
     onAudioDownloadClick: () -> Unit,
+    onOpenBrowser: (String) -> Unit = {},
+    onOpenTools: () -> Unit = {},
+    onOpenPlayer: (Int) -> Unit = {},
     onNavigateToDownloads: () -> Unit,
     onMenuOpen: () -> Unit,
 ) {
@@ -409,6 +425,98 @@ fun VidSnapHomeHub(
                     }
                 }
             }
+
+            Spacer(Modifier.height(12.dp))
+
+            // Browser Downloader & FFmpeg Media Tools quick strip
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (isDark) Color(0xFF1C1C22) else Color(0xFFF3F4F6),
+                    modifier = Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).clickable {
+                        onOpenBrowser("https://m.youtube.com")
+                    },
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier =
+                                Modifier.size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF6366F1).copy(alpha = 0.16f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Public,
+                                contentDescription = null,
+                                tint = Color(0xFF6366F1),
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "Browser",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                text = "Reels & web",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (isDark) Color(0xFF1C1C22) else Color(0xFFF3F4F6),
+                    modifier = Modifier.weight(1f).clip(RoundedCornerShape(16.dp)).clickable {
+                        onOpenTools()
+                    },
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier =
+                                Modifier.size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFD946EF).copy(alpha = 0.16f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.ContentCut,
+                                contentDescription = null,
+                                tint = Color(0xFFD946EF),
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "MP3 & Trim",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                text = "FFmpeg tools",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         Spacer(Modifier.height(24.dp))
@@ -441,7 +549,7 @@ fun VidSnapHomeHub(
                                 if (!clipText.isNullOrEmpty() && (clipText.contains("http://") || clipText.contains("https://"))) {
                                     onDownloadUrl(clipText)
                                 } else {
-                                    Toast.makeText(context, "Copy a ${platform.name} link to download", Toast.LENGTH_SHORT).show()
+                                    onOpenBrowser(platform.browseUrl)
                                 }
                             },
                     ) {
@@ -465,7 +573,7 @@ fun VidSnapHomeHub(
 
         Spacer(Modifier.height(24.dp))
 
-        // 5. "Recent downloads" Section Header
+        // 5. "Recent downloads" Section Header + Cards
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -485,6 +593,93 @@ fun VidSnapHomeHub(
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 14.sp,
                 )
+            }
+        }
+
+        if (recentDownloads.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                recentDownloads.forEach { item ->
+                    val isAudio = item.videoPath.lowercase().contains(Regex(AUDIO_REGEX))
+                    val size = remember(item.videoPath) { item.videoPath.getFileSize() }
+                    val ext = item.videoPath.substringAfterLast('.', "").uppercase()
+                    val badgeGradient =
+                        if (isAudio) audioCardGradient else videoCardGradient
+
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = if (isDark) Color(0xFF1C1C22) else Color.White,
+                        tonalElevation = if (isDark) 0.dp else 1.dp,
+                        shadowElevation = if (isDark) 0.dp else 2.dp,
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable {
+                            onOpenPlayer(item.id)
+                        },
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                modifier =
+                                    Modifier.size(44.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(badgeGradient),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector =
+                                        if (isAudio) Icons.Outlined.MusicNote else Icons.Outlined.Videocam,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = item.videoTitle,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text =
+                                        listOfNotNull(
+                                                ext.takeIf { it.isNotBlank() },
+                                                size.toFileSizeText(),
+                                                item.extractor.takeIf { it.isNotBlank() && it != "Unknown" },
+                                            )
+                                            .joinToString(" • "),
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Box(
+                                modifier =
+                                    Modifier.size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF7C3AED).copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.PlayArrow,
+                                    contentDescription = "Play",
+                                    tint = Color(0xFF7C3AED),
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }

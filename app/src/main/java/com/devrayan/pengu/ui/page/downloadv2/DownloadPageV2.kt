@@ -117,11 +117,14 @@ import com.devrayan.pengu.ui.page.downloadv2.configure.PlaylistSelectionPage
 import com.devrayan.pengu.ui.page.downloadv2.configure.PreferencesMock
 import com.devrayan.pengu.ui.svg.DynamicColorImageVectors
 import com.devrayan.pengu.ui.svg.drawablevectors.download
+import com.devrayan.pengu.database.objects.DownloadedVideoInfo
 import com.devrayan.pengu.ui.theme.SealTheme
+import com.devrayan.pengu.util.DatabaseUtil
 import com.devrayan.pengu.util.DownloadUtil
 import com.devrayan.pengu.util.FileUtil
 import com.devrayan.pengu.util.getErrorReport
 import com.devrayan.pengu.util.makeToast
+import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -200,6 +203,9 @@ fun DownloadPageV2(
     modifier: Modifier = Modifier,
     onMenuOpen: (() -> Unit) = {},
     onNavigateToRoute: ((String) -> Unit) = {},
+    onOpenBrowser: ((String) -> Unit) = {},
+    onOpenTools: (() -> Unit) = {},
+    onOpenPlayer: ((Int) -> Unit) = {},
     dialogViewModel: DownloadDialogViewModel,
     downloader: DownloaderV2 = koinInject(),
 ) {
@@ -209,9 +215,18 @@ fun DownloadPageV2(
     val clipboardManager = LocalClipboardManager.current
     val uriHandler = LocalUriHandler.current
 
+    val downloadHistory by DatabaseUtil.getDownloadHistoryFlow().collectAsStateWithLifecycle(emptyList())
+    val recentDownloads = remember(downloadHistory) {
+        downloadHistory.reversed().filter { File(it.videoPath).exists() }.take(3)
+    }
+
+    var showQuickSheet by remember { mutableStateOf(false) }
+    var quickSheetAudioMode by remember { mutableStateOf(false) }
+
     DownloadPageImplV2(
         modifier = modifier,
         taskDownloadStateMap = downloader.getTaskStateMap(),
+        recentDownloads = recentDownloads,
         downloadCallback = {
             view.slightHapticFeedback()
             dialogViewModel.postAction(Action.ShowSheet())
@@ -222,12 +237,17 @@ fun DownloadPageV2(
         },
         onVideoDownloadClick = {
             view.slightHapticFeedback()
-            dialogViewModel.postAction(Action.ShowSheet())
+            quickSheetAudioMode = false
+            showQuickSheet = true
         },
         onAudioDownloadClick = {
             view.slightHapticFeedback()
-            dialogViewModel.postAction(Action.ShowSheet())
+            quickSheetAudioMode = true
+            showQuickSheet = true
         },
+        onOpenBrowser = onOpenBrowser,
+        onOpenTools = onOpenTools,
+        onOpenPlayer = onOpenPlayer,
         onNavigateToDownloads = {
             onNavigateToRoute(com.devrayan.pengu.ui.common.Route.DOWNLOADS)
         },
@@ -249,8 +269,13 @@ fun DownloadPageV2(
                 context.makeToast(R.string.link_copied)
             }
             is UiAction.OpenFile -> {
-                action.filePath?.let {
-                    FileUtil.openFile(path = it) { context.makeToast(R.string.file_unavailable) }
+                action.filePath?.let { path ->
+                    val matched = downloadHistory.firstOrNull { it.videoPath == path }
+                    if (matched != null && File(path).exists()) {
+                        onOpenPlayer(matched.id)
+                    } else {
+                        FileUtil.openFile(path = path) { context.makeToast(R.string.file_unavailable) }
+                    }
                 }
             }
             is UiAction.OpenThumbnailURL -> {
@@ -270,6 +295,23 @@ fun DownloadPageV2(
 
     var preferences by remember {
         mutableStateOf(DownloadUtil.DownloadPreferences.createFromPreferences())
+    }
+
+    if (showQuickSheet) {
+        VidSnapQuickSheet(
+            initialAudioMode = quickSheetAudioMode,
+            onDismiss = { showQuickSheet = false },
+            onStartPresetDownload = { url, presetPrefs ->
+                preferences = presetPrefs
+                dialogViewModel.postAction(Action.DownloadWithPreset(listOf(url), presetPrefs))
+            },
+            onOpenFullOptions = { url ->
+                dialogViewModel.postAction(
+                    Action.ShowSheet(if (url.isNotBlank()) listOf(url) else null)
+                )
+            },
+            onOpenBrowserForSite = onOpenBrowser,
+        )
     }
     val sheetValue by dialogViewModel.sheetValueFlow.collectAsStateWithLifecycle()
     val state by dialogViewModel.sheetStateFlow.collectAsStateWithLifecycle()
@@ -335,10 +377,14 @@ private const val HeaderSpacingDp = 28
 fun DownloadPageImplV2(
     modifier: Modifier = Modifier,
     taskDownloadStateMap: SnapshotStateMap<Task, Task.State>,
+    recentDownloads: List<DownloadedVideoInfo> = emptyList(),
     downloadCallback: () -> Unit = {},
     onDownloadUrl: (String) -> Unit = {},
     onVideoDownloadClick: () -> Unit = {},
     onAudioDownloadClick: () -> Unit = {},
+    onOpenBrowser: (String) -> Unit = {},
+    onOpenTools: () -> Unit = {},
+    onOpenPlayer: (Int) -> Unit = {},
     onNavigateToDownloads: () -> Unit = {},
     onMenuOpen: (() -> Unit) = {},
     onActionPost: (Task, UiAction) -> Unit,
@@ -389,9 +435,13 @@ fun DownloadPageImplV2(
             ) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     VidSnapHomeHub(
+                        recentDownloads = recentDownloads,
                         onDownloadUrl = onDownloadUrl,
                         onVideoDownloadClick = onVideoDownloadClick,
                         onAudioDownloadClick = onAudioDownloadClick,
+                        onOpenBrowser = onOpenBrowser,
+                        onOpenTools = onOpenTools,
+                        onOpenPlayer = onOpenPlayer,
                         onNavigateToDownloads = onNavigateToDownloads,
                         onMenuOpen = onMenuOpen,
                     )
@@ -485,7 +535,7 @@ fun DownloadPageImplV2(
                             )
                         }
                     }
-                } else {
+                } else if (recentDownloads.isEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         androidx.compose.material3.Card(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),

@@ -48,7 +48,7 @@ val BottomNavItems =
             unselectedIcon = Icons.Outlined.Home,
         ),
         BottomNavItem(
-            route = Route.TASK_LIST,
+            route = Route.DOWNLOAD_QUEUE,
             title = "Progress",
             selectedIcon = Icons.Filled.HourglassTop,
             unselectedIcon = Icons.Outlined.HourglassTop,
@@ -96,7 +96,10 @@ fun PenguBottomBar(
                 val isSelected =
                     when (item.route) {
                         Route.HOME -> currentRoute == Route.HOME
-                        Route.TASK_LIST -> currentRoute?.startsWith(Route.TASK_LIST) == true || currentRoute?.startsWith(Route.TASK_LOG) == true
+                        Route.DOWNLOAD_QUEUE ->
+                            currentRoute == Route.DOWNLOAD_QUEUE ||
+                                currentRoute?.startsWith(Route.TASK_LIST) == true ||
+                                currentRoute?.startsWith(Route.TASK_LOG) == true
                         Route.DOWNLOADS -> currentRoute == Route.DOWNLOADS
                         Route.SETTINGS_PAGE -> currentRoute == Route.SETTINGS_PAGE || currentRoute?.startsWith("settings") == true
                         else -> currentRoute == item.route
