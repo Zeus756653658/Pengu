@@ -49,9 +49,12 @@ function sanitizeText(raw, maxLen) {
 function redactSensitiveText(text) {
   if (!text) return "";
   return String(text)
-    .replace(/(authorization|cookie|set-cookie|x-tracking-token|password|passwd|secret|token|apikey|api_key)\s*[:=]\s*[^\s,;'"&]+/gi, "$1=[REDACTED]")
-    .replace(/([?&](?:token|key|password|auth|sig|cookie|session)=)[^&\s]+/gi, "$1[REDACTED]")
-    .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, "Bearer [REDACTED]");
+    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/-]+=*/gi, "$1 [REDACTED]")
+    .replace(
+      /\b(authorization|cookie|set-cookie|x-tracking-token|x-api-key|password|passwd|secret|token|apikey|api_key)\s*[:=]\s*(?:(?:Bearer|Basic|Token)\s+)?[^\s,;'"&]+/gi,
+      "$1=[REDACTED]"
+    )
+    .replace(/([?&](?:token|key|password|auth|sig|cookie|session)=)[^&\s]+/gi, "$1[REDACTED]");
 }
 
 function detectImageTypeFromBytes(buffer) {
