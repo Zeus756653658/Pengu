@@ -2,42 +2,7 @@ const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const { BugReportService } = require("./services/bugReportService");
-const { createBugReportHandler } = require("./routes/bugReports");
-
-function readJsonBody(req, maxBytes = 1024 * 1024) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    let total = 0;
-    req.on("data", (chunk) => {
-      total += chunk.length;
-      if (total > maxBytes) {
-        reject(new Error("Payload too large"));
-        req.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-    req.on("end", () => {
-      try {
-        const text = Buffer.concat(chunks).toString("utf8");
-        resolve(text ? JSON.parse(text) : {});
-      } catch (err) {
-        reject(new Error("Invalid JSON body"));
-      }
-    });
-    req.on("error", reject);
-  });
-}
-
-function sendJson(res, status, data) {
-  const payload = JSON.stringify(data, null, 2);
-  res.writeHead(status, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Content-Length": Buffer.byteLength(payload),
-    "X-Content-Type-Options": "nosniff",
-  });
-  res.end(payload);
-}
+const { createBugReportHandler, readJsonWithLimit, sendJson } = require("./routes/bugReports");
 
 function createBetaServer(options = {}) {
   const dataDir = options.dataDir || process.env.PENGU_DATA_DIR || path.join(__dirname, "data");
@@ -150,7 +115,7 @@ function createBetaServer(options = {}) {
       }
 
       if (method === "POST" && pathname === "/api/beta/enroll") {
-        const body = await readJsonBody(req);
+        const body = await readJsonWithLimit(req, 1024 * 1024);
         const deviceId = String(body.deviceId || "").trim();
         const enrollmentType = body.enrollmentType === "closed" ? "closed" : "open";
         const inviteCode = String(body.inviteCode || "").trim();
@@ -204,7 +169,7 @@ function createBetaServer(options = {}) {
       }
 
       if (method === "POST" && pathname === "/api/beta/leave") {
-        const body = await readJsonBody(req);
+        const body = await readJsonWithLimit(req, 1024 * 1024);
         const deviceId = String(body.deviceId || "").trim();
         store.testers = store.testers.filter((t) => t.deviceId !== deviceId);
         saveStore();
@@ -253,11 +218,20 @@ function createBetaServer(options = {}) {
 
       return sendJson(res, 404, { error: "Not found" });
     } catch (err) {
+      if (res.headersSent) {
+        res.destroy();
+        return;
+      }
       const code = err.status || 500;
-      return sendJson(res, code, {
-        error: code === 500 ? "Internal server error" : err.message,
-        code: err.code || "SERVER_ERROR",
-      });
+      return sendJson(
+        res,
+        code,
+        {
+          error: code === 500 ? "Internal server error" : err.message,
+          code: err.code || "SERVER_ERROR",
+        },
+        err.closeConnection ? { Connection: "close" } : {}
+      );
     }
   });
 

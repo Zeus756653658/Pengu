@@ -14,39 +14,69 @@ function readJsonWithLimit(req, maxBytes = MAX_REQUEST_BYTES) {
     const chunks = [];
     let total = 0;
     let settled = false;
+    let exceeded = false;
+
+    const fail = (err) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    };
+
+    const makeTooLargeError = () => {
+      const limitLabel =
+        maxBytes >= 1024 * 1024
+          ? `${Math.round(maxBytes / (1024 * 1024))} MB`
+          : `${Math.round(maxBytes / 1024)} KB`;
+      const err = new Error(`Request exceeds ${limitLabel} limit`);
+      err.status = 413;
+      err.code = "PAYLOAD_TOO_LARGE";
+      return err;
+    };
+
+    const declaredLength = Number(req.headers["content-length"] || 0);
+    if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+      exceeded = true;
+    }
+
     req.on("data", (chunk) => {
       if (settled) return;
       total += chunk.length;
-      if (total > maxBytes) {
-        settled = true;
-        const err = new Error(`Request exceeds ${Math.round(maxBytes / (1024 * 1024))} MB limit`);
-        err.status = 413;
-        err.code = "PAYLOAD_TOO_LARGE";
-        req.destroy();
-        reject(err);
+      if (exceeded || total > maxBytes) {
+        exceeded = true;
+        chunks.length = 0;
+        if (total > maxBytes * 4) {
+          req.resume();
+          const err = makeTooLargeError();
+          err.closeConnection = true;
+          fail(err);
+        }
         return;
       }
       chunks.push(chunk);
     });
+
     req.on("end", () => {
       if (settled) return;
-      settled = true;
+      if (exceeded) {
+        fail(makeTooLargeError());
+        return;
+      }
       try {
         const text = Buffer.concat(chunks).toString("utf8");
+        settled = true;
         resolve(text ? JSON.parse(text) : {});
       } catch (_) {
         const err = new Error("Malformed JSON payload");
         err.status = 400;
         err.code = "INVALID_JSON";
-        reject(err);
+        fail(err);
       }
     });
-    req.on("error", (err) => {
-      if (!settled) {
-        settled = true;
-        reject(err);
-      }
+
+    req.on("aborted", () => {
+      fail(Object.assign(new Error("Request aborted"), { status: 400, code: "REQUEST_ABORTED" }));
     });
+    req.on("error", fail);
   });
 }
 
@@ -533,4 +563,4 @@ function createBugReportHandler({ service, adminToken, sessionSecret }) {
   };
 }
 
-module.exports = { createBugReportHandler };
+module.exports = { createBugReportHandler, readJsonWithLimit, sendJson };
