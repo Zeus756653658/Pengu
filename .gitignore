@@ -20,5 +20,10 @@ local.properties
 music repo/
 SKILLS REPO/
 *.apk
-beta-backend/data/
+beta-backend/data/*.tmp*
+beta-backend/data/*.bak
+beta-backend/data/*.corrupt*
+beta-backend/data/admin-audit.log
+beta-backend/data/attachments/
+beta-backend/data/store.json
 beta-backend/uploads/

@@ -135,6 +135,7 @@ const val BETA_ENROLLMENT_STATUS = "beta_enrollment_status"
 const val BETA_TESTER_ID = "beta_tester_id"
 const val BETA_INVITE_CODE = "beta_invite_code"
 const val BETA_SERVER_URL = "beta_server_url"
+const val BUG_REPORT_RECORDS = "bug_report_records"
 
 private const val INTERVAL_DAY = 86_400_000L
 private const val INTERVAL_WEEK = 86_400_000L * 7

@@ -1,11 +1,11 @@
 {
   "name": "pengu-beta-backend",
   "version": "1.2.0",
-  "description": "Self-hosted Beta Testing, Closed Beta Tester Access Control, APK Distribution, and Support Relay Backend for Pengu",
+  "description": "Self-hosted Beta Testing & Bug Reporting Backend for Pengu",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test_server.mjs"
+    "test": "node --test test_server.mjs test_bug_reports.mjs"
   },
   "engines": {
     "node": ">=18.0.0"

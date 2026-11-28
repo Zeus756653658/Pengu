@@ -883,6 +883,31 @@ fun NavGraphBuilder.settingsGraph(
         animatedComposable(Route.TROUBLESHOOTING) {
             TroubleShootingPage(onNavigateTo = onNavigateTo, onBack = onNavigateBack)
         }
+        animatedComposable(Route.BUG_REPORT) {
+            com.devrayan.pengu.ui.page.settings.bugreport.BugReportPage(
+                onNavigateBack = onNavigateBack,
+                onNavigateToMyReports = { onNavigateTo(Route.MY_BUG_REPORTS) },
+            )
+        }
+        animatedComposable(Route.MY_BUG_REPORTS) {
+            com.devrayan.pengu.ui.page.settings.bugreport.MyBugReportsPage(
+                onNavigateBack = onNavigateBack,
+                onOpenNewReport = { onNavigateTo(Route.BUG_REPORT) },
+                onOpenDetail = { localId ->
+                    onNavigateTo("${Route.BUG_REPORT_DETAIL}/${android.net.Uri.encode(localId)}")
+                },
+            )
+        }
+        animatedComposable(
+            Route.BUG_REPORT_DETAIL arg Route.BUG_REPORT_ID,
+            arguments = listOf(navArgument(Route.BUG_REPORT_ID) { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val id = backStackEntry.arguments?.getString(Route.BUG_REPORT_ID).orEmpty()
+            com.devrayan.pengu.ui.page.settings.bugreport.BugReportDetailPage(
+                reportLocalId = id,
+                onNavigateBack = onNavigateBack,
+            )
+        }
         animatedComposable(Route.BETA_PROGRAM) {
             com.devrayan.pengu.ui.page.settings.beta.BetaProgramPage(
                 onNavigateBack = onNavigateBack,

@@ -71,6 +71,18 @@ fun TroubleShootingPage(
                         text = stringResource(R.string.issue_tracker_hint),
                     )
                     PreferenceItem(
+                        title = "Report a Bug",
+                        description = "Submit structured bug reports with screenshots & status tracking",
+                        icon = Icons.Outlined.Update,
+                        onClick = { onNavigateTo(Route.BUG_REPORT) },
+                    )
+                    PreferenceItem(
+                        title = "My Bug Reports",
+                        description = "Track submitted report status, developer replies & retry offline items",
+                        icon = Icons.Outlined.Settings,
+                        onClick = { onNavigateTo(Route.MY_BUG_REPORTS) },
+                    )
+                    PreferenceItem(
                         title = "Pengu Beta Program",
                         description = "Test experimental builds & switch between Beta / Stable",
                         icon = Icons.Outlined.Settings,

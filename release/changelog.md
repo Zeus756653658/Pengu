@@ -17,6 +17,9 @@
 ---
 
 ## 2. Add
+- **Structured Bug Reporting, Status Tracking & Crash Consent (`BugReportPage`, `MyBugReportsPage`, `CrashReportActivity`)**:
+  - **Settings -> Troubleshooting -> Report a Bug:** Category selection, validation, character counters, screenshot attachments (up to 3 images), offline preservation with retry, unique Report ID generation, and live status tracking (`Open`, `Reviewing`, `In Progress`, `Fixed`, `Rejected`, `Closed`).
+  - **Consent-First Crash Recovery:** Updated `CrashReportActivity` with explicit consent toggles, secret redaction (`DiagnosticRedactor`), **Send Bug Report**, **Copy Crash Log**, and **Exit**.
 - **Pengu Beta Testing Program (`BetaProgramPage`, `MyTestingProgramPage`, `BetaReleaseDetailsPage`, `BetaReleaseHistoryPage`)**:
   - **Open Beta & Closed Beta Enrollment:** Join **Open Beta** immediately with zero manual approval, or request **Closed Beta** seats via invite code & capacity controls inside **Settings -> Pengu Beta Program**.
   - **Channel Isolation (`Beta`, `Stable`, `Archived`):** Strictly separated `Stable` and `Beta` update channels with complete release history filtering (`All`, `Beta`, `Stable`, `Archived`) and manual channel reversion back to Stable without automatic silent switching.

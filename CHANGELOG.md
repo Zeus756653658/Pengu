@@ -12,6 +12,10 @@ All notable changes to **Pengu** will be documented in this file.
 
 ## [1.2.0] - 2026-11-28
 ### Feature Release Highlights
+- **Structured Bug Reporting, Crash Consent & Tracking System**:
+  - Added full bug reporting workflow under **Settings -> Troubleshooting -> Report a Bug** (`BugReportPage`, `MyBugReportsPage`, `BugReportDetailPage`, `BugReportRepository`, `BugReportViewModel`): 9 categories, field & character limit validation, duplicate submission protection, up to 3 validated screenshot attachments, local offline/timeout preservation with retry, live status retrieval (`Open`, `Reviewing`, `In Progress`, `Fixed`, `Rejected`, `Closed`), and developer responses.
+  - Extended `CrashReportActivity` with **Send Bug Report**, **Copy Crash Log**, and **Exit**, enforcing explicit user consent and automatic diagnostic redaction (`DiagnosticRedactor`) before submission.
+  - Extended `beta-backend/` (`services/bugReportService.js`, `routes/bugReports.js`, `data/bug-reports.json`) with concurrency-safe atomic JSON storage + `.bak` recovery, magic-byte attachment checks, rate limiting, tracking-token status endpoints, and an authenticated server-side Developer Bug Management Dashboard (`/admin/bug-reports`).
 - **WhatsApp / Instagram Style Pengu Beta Testing Program**:
   - **Open & Closed Beta Enrollment**: Dedicated `BetaProgramPage`, `MyTestingProgramPage`, `BetaReleaseDetailsPage`, and `BetaReleaseHistoryPage` in Settings (`BETA` badges, membership pass, installed vs latest beta build timeline, known bugs, experimental features, tester eligibility checks, Open Beta instant opt-in, Closed Beta invite/capacity verification, and explicit channel switch back to Stable).
   - **Strict Release Channels (`Beta`, `Stable`, `Archived`)**: Separated Stable production builds from Beta pre-releases inside `UpdateUtil` & `BetaRepository` so users are never silently switched between channels.

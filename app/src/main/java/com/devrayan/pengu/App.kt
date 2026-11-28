@@ -66,11 +66,13 @@ class App : Application() {
                 module {
                     single<DownloaderV2> { DownloaderV2Impl(androidContext()) }
                     single { com.devrayan.pengu.beta.BetaRepository(androidContext()) }
+                    single { com.devrayan.pengu.bugreport.BugReportRepository(androidContext()) }
                     viewModel { DownloadDialogViewModel(downloader = get()) }
                     viewModel { HomePageViewModel() }
                     viewModel { CookiesViewModel() }
                     viewModel { VideoListViewModel() }
                     viewModel { com.devrayan.pengu.beta.BetaProgramViewModel(get(), androidContext()) }
+                    viewModel { com.devrayan.pengu.bugreport.BugReportViewModel(get()) }
                 }
             )
         }

@@ -1,6 +1,8 @@
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
+const { BugReportService } = require("./services/bugReportService");
+const { createBugReportHandler } = require("./routes/bugReports");
 
 function readJsonBody(req, maxBytes = 1024 * 1024) {
   return new Promise((resolve, reject) => {
@@ -38,12 +40,26 @@ function sendJson(res, status, data) {
 }
 
 function createBetaServer(options = {}) {
-  const dataDir = options.dataDir || path.join(__dirname, "data");
-  const uploadsDir = options.uploadsDir || path.join(__dirname, "uploads");
+  const dataDir = options.dataDir || process.env.PENGU_DATA_DIR || path.join(__dirname, "data");
+  const uploadsDir =
+    options.uploadsDir || process.env.PENGU_UPLOADS_DIR || path.join(dataDir, "uploads");
   const storePath = path.join(dataDir, "store.json");
 
   fs.mkdirSync(dataDir, { recursive: true });
   fs.mkdirSync(uploadsDir, { recursive: true });
+
+  const bugReportService = new BugReportService({
+    dataDir,
+    dbPath: options.bugDbPath || path.join(dataDir, "bug-reports.json"),
+    attachmentsDir: options.attachmentsDir || path.join(dataDir, "attachments"),
+    auditLogPath: path.join(dataDir, "admin-audit.log"),
+    duplicateWindowMs: options.duplicateWindowMs,
+  });
+  const handleBugReports = createBugReportHandler({
+    service: bugReportService,
+    adminToken: options.adminToken,
+    sessionSecret: options.sessionSecret,
+  });
 
   function loadStore() {
     if (fs.existsSync(storePath)) {
@@ -91,8 +107,22 @@ function createBetaServer(options = {}) {
       const pathname = reqUrl.pathname;
       const method = req.method || "GET";
 
-      if (method === "GET" && pathname === "/api/health") {
-        return sendJson(res, 200, { ok: true, service: "pengu-beta-backend", version: "1.2.0" });
+      if (await handleBugReports(req, res, pathname, reqUrl)) {
+        return;
+      }
+
+      if (method === "GET" && (pathname === "/" || pathname === "/api/health")) {
+        return sendJson(res, 200, {
+          ok: true,
+          service: "pengu-beta-backend",
+          version: "1.2.0",
+          endpoints: [
+            "/api/health",
+            "/api/beta/config",
+            "/api/bug-reports",
+            "/admin/bug-reports",
+          ],
+        });
       }
 
       if (method === "GET" && pathname === "/api/beta/config") {
@@ -147,7 +177,6 @@ function createBetaServer(options = {}) {
           return sendJson(res, 200, entry);
         }
 
-        // Closed Beta access control + capacity guard
         if (!store.config.closedBetaEnabled) {
           return sendJson(res, 403, { error: "Closed Beta is not accepting requests" });
         }
@@ -224,10 +253,15 @@ function createBetaServer(options = {}) {
 
       return sendJson(res, 404, { error: "Not found" });
     } catch (err) {
-      return sendJson(res, 500, { error: err.message || "Internal server error" });
+      const code = err.status || 500;
+      return sendJson(res, code, {
+        error: code === 500 ? "Internal server error" : err.message,
+        code: err.code || "SERVER_ERROR",
+      });
     }
   });
 
+  server.bugReportService = bugReportService;
   return server;
 }
 
@@ -235,7 +269,7 @@ if (require.main === module) {
   const port = Number(process.env.PORT || 8787);
   const server = createBetaServer();
   server.listen(port, () => {
-    console.log(`Pengu Beta Backend running on port ${port}`);
+    console.log(`Pengu Beta & Bug Report Backend running on port ${port}`);
   });
 }
 

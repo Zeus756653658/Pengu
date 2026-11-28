@@ -22,6 +22,8 @@
 
 - **Multi-Platform Support**: Download videos and audio from YouTube, Instagram, Twitter/X, TikTok, Reddit, Facebook, Vimeo, and over 1,000+ sites supported by [yt-dlp](https://github.com/yt-dlp/yt-dlp).
 - **High Resolution Downloads & Audio Extraction**: Supports up to 4K, 1080p, 720p, and 60fps video plus crisp MP3, M4A, FLAC, OPUS, OGG, and WAV audio.
+- **Structured Bug Reporting, Crash Consent & Live Status Tracking**:
+  - Dedicated **Settings -> Troubleshooting -> Report a Bug**, **My Bug Reports**, and **Bug Report Detail** screens (`BugReportPage`, `MyBugReportsPage`, `BugReportDetailPage`) with 9 categories, field validation & character counters, duplicate protection, up to 3 magic-byte-verified screenshots, offline local persistence/retry, consent-first redacted crash logs in `CrashReportActivity`, and server-authenticated Developer Bug Management Dashboard in `beta-backend/` (`/admin/bug-reports`).
 - **Pengu Beta Testing Program (Open & Closed Beta)**:
   - **Open Beta & Closed Beta Enrollment**: Join Open Beta instantly or request Closed Beta access via invite code inside **Settings -> Pengu Beta Program**.
   - **Strict Release Channels (`Stable`, `Beta`, `Archived`)**: Dedicated channel switching (`Stable` vs `Beta`) that never switches your channel automatically.
