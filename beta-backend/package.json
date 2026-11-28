@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test_server.mjs test_bug_reports.mjs"
+    "test": "node --test test_server.mjs test_bug_reports.mjs test_console.mjs"
   },
   "engines": {
     "node": ">=18.0.0"

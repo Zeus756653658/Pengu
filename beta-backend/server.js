@@ -1,70 +1,49 @@
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
+const { createAdminAuth, readJsonWithLimit, sendJson } = require("./services/adminAuth");
 const { BugReportService } = require("./services/bugReportService");
-const { createBugReportHandler, readJsonWithLimit, sendJson } = require("./routes/bugReports");
+const { BetaStoreService } = require("./services/betaStoreService");
+const { createBugReportHandler } = require("./routes/bugReports");
+const { createAdminConsoleHandler } = require("./routes/adminConsole");
+const { renderConsoleLoginHtml } = require("./views/consoleHtml");
 
 function createBetaServer(options = {}) {
   const dataDir = options.dataDir || process.env.PENGU_DATA_DIR || path.join(__dirname, "data");
   const uploadsDir =
     options.uploadsDir || process.env.PENGU_UPLOADS_DIR || path.join(dataDir, "uploads");
-  const storePath = path.join(dataDir, "store.json");
+  const auditLogPath = path.join(dataDir, "admin-audit.log");
 
-  fs.mkdirSync(dataDir, { recursive: true });
-  fs.mkdirSync(uploadsDir, { recursive: true });
+  const betaStore = new BetaStoreService({
+    dataDir,
+    uploadsDir,
+    auditLogPath,
+  });
 
   const bugReportService = new BugReportService({
     dataDir,
     dbPath: options.bugDbPath || path.join(dataDir, "bug-reports.json"),
     attachmentsDir: options.attachmentsDir || path.join(dataDir, "attachments"),
-    auditLogPath: path.join(dataDir, "admin-audit.log"),
+    auditLogPath,
     duplicateWindowMs: options.duplicateWindowMs,
   });
-  const handleBugReports = createBugReportHandler({
-    service: bugReportService,
+
+  const auth = createAdminAuth({
     adminToken: options.adminToken,
     sessionSecret: options.sessionSecret,
+    renderLoginHtml: renderConsoleLoginHtml,
   });
 
-  function loadStore() {
-    if (fs.existsSync(storePath)) {
-      try {
-        return JSON.parse(fs.readFileSync(storePath, "utf8"));
-      } catch (_) {}
-    }
-    return {
-      config: {
-        openBetaEnabled: true,
-        closedBetaEnabled: true,
-        closedCapacity: 100,
-        inviteCodes: ["PENGU-BETA-VIP"],
-        knownBugs: [],
-        experimentalFeatures: [
-          "Early access Pengu Music Player presets",
-          "Next-generation format & Ringtone Engine",
-        ],
-      },
-      testers: [],
-      releases: [],
-    };
-  }
+  const handleBugReports = createBugReportHandler({
+    service: bugReportService,
+    auth,
+  });
 
-  let store = loadStore();
-  function saveStore() {
-    fs.writeFileSync(storePath, JSON.stringify(store, null, 2));
-  }
-  saveStore();
-
-  function closedActiveCount() {
-    return store.testers.filter(
-      (t) => t.enrollmentType === "closed" && t.status === "active"
-    ).length;
-  }
-
-  function getTesterStatus(deviceId) {
-    if (!deviceId) return null;
-    return store.testers.find((t) => t.deviceId === deviceId) || null;
-  }
+  const handleAdminConsole = createAdminConsoleHandler({
+    auth,
+    betaStore,
+    bugReportService,
+  });
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -72,7 +51,19 @@ function createBetaServer(options = {}) {
       const pathname = reqUrl.pathname;
       const method = req.method || "GET";
 
+      if (await auth.handleAuthRoutes(req, res, pathname)) {
+        return;
+      }
+      if (await handleAdminConsole(req, res, pathname, reqUrl)) {
+        return;
+      }
       if (await handleBugReports(req, res, pathname, reqUrl)) {
+        return;
+      }
+
+      if (method === "GET" && pathname === "/" && String(req.headers.accept || "").includes("text/html")) {
+        res.writeHead(302, { Location: "/console" });
+        res.end();
         return;
       }
 
@@ -81,7 +72,9 @@ function createBetaServer(options = {}) {
           ok: true,
           service: "pengu-beta-backend",
           version: "1.2.0",
+          consoleUrl: "/console",
           endpoints: [
+            "/console",
             "/api/health",
             "/api/beta/config",
             "/api/bug-reports",
@@ -91,127 +84,59 @@ function createBetaServer(options = {}) {
       }
 
       if (method === "GET" && pathname === "/api/beta/config") {
-        return sendJson(res, 200, {
-          openBetaEnabled: store.config.openBetaEnabled,
-          closedBetaEnabled: store.config.closedBetaEnabled,
-          closedCapacity: store.config.closedCapacity,
-          closedActiveCount: closedActiveCount(),
-          knownBugs: store.config.knownBugs,
-          experimentalFeatures: store.config.experimentalFeatures,
-        });
+        return sendJson(res, 200, betaStore.getPublicConfig());
       }
 
       if (method === "GET" && pathname === "/api/beta/status") {
         const deviceId = reqUrl.searchParams.get("deviceId") || "";
-        const tester = getTesterStatus(deviceId);
-        return sendJson(res, 200, {
-          enrolled: !!tester && tester.status === "active",
-          enrollmentType: tester ? tester.enrollmentType : "none",
-          status: tester ? tester.status : "not_enrolled",
-          joinedAt: tester ? tester.joinedAt : null,
-          closedActiveCount: closedActiveCount(),
-          closedCapacity: store.config.closedCapacity,
-        });
+        return sendJson(res, 200, betaStore.getPublicTesterStatus(deviceId));
       }
 
       if (method === "POST" && pathname === "/api/beta/enroll") {
         const body = await readJsonWithLimit(req, 1024 * 1024);
-        const deviceId = String(body.deviceId || "").trim();
-        const enrollmentType = body.enrollmentType === "closed" ? "closed" : "open";
-        const inviteCode = String(body.inviteCode || "").trim();
-        const deviceModel = String(body.deviceModel || "Android Device").trim();
-        if (!deviceId) {
-          return sendJson(res, 400, { error: "deviceId is required" });
-        }
-
-        const existingIdx = store.testers.findIndex((t) => t.deviceId === deviceId);
-        if (enrollmentType === "open") {
-          if (!store.config.openBetaEnabled) {
-            return sendJson(res, 403, { error: "Open Beta is currently paused" });
-          }
-          const entry = {
-            deviceId,
-            deviceModel,
-            enrollmentType: "open",
-            status: "active",
-            joinedAt: new Date().toISOString(),
-          };
-          if (existingIdx >= 0) store.testers[existingIdx] = entry;
-          else store.testers.push(entry);
-          saveStore();
-          return sendJson(res, 200, entry);
-        }
-
-        if (!store.config.closedBetaEnabled) {
-          return sendJson(res, 403, { error: "Closed Beta is not accepting requests" });
-        }
-        const alreadyActive =
-          existingIdx >= 0 &&
-          store.testers[existingIdx].enrollmentType === "closed" &&
-          store.testers[existingIdx].status === "active";
-        if (!alreadyActive && closedActiveCount() >= store.config.closedCapacity) {
-          return sendJson(res, 403, { error: "Closed Beta tester capacity reached" });
-        }
-        const validInvite =
-          inviteCode.length > 0 && store.config.inviteCodes.includes(inviteCode);
-        const entry = {
-          deviceId,
-          deviceModel,
-          enrollmentType: "closed",
-          inviteCodeUsed: validInvite ? inviteCode : "",
-          status: validInvite ? "active" : "pending",
-          joinedAt: new Date().toISOString(),
-        };
-        if (existingIdx >= 0) store.testers[existingIdx] = entry;
-        else store.testers.push(entry);
-        saveStore();
-        return sendJson(res, 200, entry);
+        const result = betaStore.enrollTester(body);
+        return sendJson(res, result.status, result.data);
       }
 
       if (method === "POST" && pathname === "/api/beta/leave") {
         const body = await readJsonWithLimit(req, 1024 * 1024);
-        const deviceId = String(body.deviceId || "").trim();
-        store.testers = store.testers.filter((t) => t.deviceId !== deviceId);
-        saveStore();
-        return sendJson(res, 200, { status: "not_enrolled", enrollmentType: "none" });
+        return sendJson(res, 200, betaStore.leaveTester(body));
       }
 
       if (method === "GET" && pathname === "/api/releases") {
-        const channel = (reqUrl.searchParams.get("channel") || "all").toLowerCase();
+        const channel = reqUrl.searchParams.get("channel") || "all";
         const deviceId = reqUrl.searchParams.get("deviceId") || "";
-        const tester = getTesterStatus(deviceId);
-        const isClosedApproved =
-          !!tester && tester.enrollmentType === "closed" && tester.status === "active";
-
-        const visible = store.releases.filter((r) => {
-          if (r.enabled === false) return false;
-          if (r.channel === "closed" && !isClosedApproved) return false;
-          if (channel !== "all" && r.channel !== channel) return false;
-          return true;
+        return sendJson(res, 200, {
+          releases: betaStore.getPublicReleases({ channel, deviceId }),
         });
-        return sendJson(res, 200, { releases: visible });
       }
 
       const trackMatch = pathname.match(/^\/api\/releases\/([^/]+)\/track-download$/);
       if (method === "POST" && trackMatch) {
         const id = decodeURIComponent(trackMatch[1]);
-        const rel = store.releases.find((r) => r.id === id);
-        if (!rel) return sendJson(res, 404, { error: "Release not found" });
-        rel.downloadCount = (rel.downloadCount || 0) + 1;
-        saveStore();
-        return sendJson(res, 200, { id: rel.id, downloadCount: rel.downloadCount });
+        const tracked = betaStore.trackReleaseDownload(id);
+        if (!tracked) return sendJson(res, 404, { error: "Release not found" });
+        return sendJson(res, 200, tracked);
       }
 
       if (method === "GET" && pathname.startsWith("/apks/")) {
-        const fileName = path.basename(pathname.slice("/apks/".length));
-        const fullPath = path.join(uploadsDir, fileName);
-        if (!fs.existsSync(fullPath)) {
+        let rawName = pathname.slice("/apks/".length);
+        try {
+          rawName = decodeURIComponent(rawName);
+        } catch (_) {}
+        const fileName = path.basename(rawName);
+        const fullPath = path.resolve(uploadsDir, fileName);
+        if (
+          !fullPath.startsWith(path.resolve(uploadsDir) + path.sep) ||
+          !fs.existsSync(fullPath)
+        ) {
           return sendJson(res, 404, { error: "APK not found" });
         }
         const stat = fs.statSync(fullPath);
         res.writeHead(200, {
           "Content-Type": "application/vnd.android.package-archive",
           "Content-Length": stat.size,
+          "Content-Disposition": `attachment; filename="${fileName.replace(/"/g, "")}"`,
         });
         return fs.createReadStream(fullPath).pipe(res);
       }
@@ -236,6 +161,7 @@ function createBetaServer(options = {}) {
   });
 
   server.bugReportService = bugReportService;
+  server.betaStore = betaStore;
   return server;
 }
 

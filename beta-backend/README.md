@@ -82,10 +82,23 @@ Authorized screenshot download requiring valid `X-Tracking-Token` (or admin sess
 
 ---
 
-### Admin-Protected Endpoints & Developer Dashboard
+### Admin-Protected Endpoints & Developer WebApp Console
 
-#### `GET /admin/bug-reports`
-Server-rendered Developer Bug Management Dashboard. Unauthenticated visitors receive only a sign-in form; authenticated sessions receive search, category/version/status filtering, diagnostic inspection, status updates, developer replies, screenshot previews, and spam report deletion.
+#### `GET /console` (also `/admin`, `/admin/bug-reports`)
+Responsive Windows Desktop + Mobile WebApp Console for Dev Rayan. Unauthenticated visitors receive a secure token sign-in page; authenticated sessions manage:
+- **Overview**: KPI counts for open bugs, active/pending beta testers, published builds, and APK download counts.
+- **Bug Reports**: Search, category/version/status filtering, diagnostic inspection, screenshot lightbox, status updates, developer replies, and report deletion.
+- **Beta & Testers**: Open/Closed Beta toggles, seat capacity, invite codes, known bugs, experimental features, Closed Beta approvals, and tester removal.
+- **Releases & APKs**: Direct `.apk` binary upload (`POST /api/admin/releases/upload-apk` with automatic SHA-256), HTTPS release publishing, enable/disable toggle, and **Promote Beta to Stable**.
+
+#### `GET /api/admin/overview`
+Returns summary metrics across bugs, beta enrollment, releases, and server runtime.
+
+#### `PATCH /api/admin/beta/config` · `GET/PATCH/DELETE /api/admin/beta/testers`
+Configures Open/Closed Beta settings and approves or removes beta testers.
+
+#### `GET/POST/PATCH/DELETE /api/admin/releases` · `POST /api/admin/releases/upload-apk` · `POST /api/admin/releases/:id/promote`
+Uploads signed APKs, publishes releases (`stable`, `beta`, `closed`, `archived`), toggles visibility, and promotes beta builds to stable.
 
 #### `POST /api/admin/login` / `POST /api/admin/logout`
 Issues or clears `pengu_admin_session` (`HttpOnly; SameSite=Strict` + `Secure` over HTTPS).
@@ -125,4 +138,4 @@ Deletes a spam report record + stored screenshot binaries from disk and appends 
 cd beta-backend
 npm test
 ```
-Runs both `test_server.mjs` and `test_bug_reports.mjs`.
+Runs `test_server.mjs`, `test_bug_reports.mjs`, and `test_console.mjs`.
