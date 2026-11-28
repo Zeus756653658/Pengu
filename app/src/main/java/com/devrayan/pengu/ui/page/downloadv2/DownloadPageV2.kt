@@ -16,14 +16,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -217,23 +221,56 @@ fun DownloadPageV2(
 
     val downloadHistory by DatabaseUtil.getDownloadHistoryFlow().collectAsStateWithLifecycle(emptyList())
     val recentDownloads = remember(downloadHistory) {
-        downloadHistory.reversed().filter { File(it.videoPath).exists() }.take(3)
+        downloadHistory
+            .reversed()
+            .filter { File(it.videoPath).exists() }
+            .take(3)
     }
 
     var showQuickSheet by remember { mutableStateOf(false) }
     var quickSheetAudioMode by remember { mutableStateOf(false) }
+    var pendingDuplicateInfo by remember { mutableStateOf<DownloadedVideoInfo?>(null) }
+    var pendingDuplicateAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    val taskStateMap = downloader.getTaskStateMap()
+    val activeDownloadCount =
+        taskStateMap.values.count {
+            it.downloadState is Task.DownloadState.Running ||
+                it.downloadState is Task.DownloadState.FetchingInfo
+        }
+
+    fun runWithDuplicateCheck(url: String, proceed: () -> Unit) {
+        val trimmed = url.trim()
+        if (trimmed.isBlank()) {
+            proceed()
+            return
+        }
+        scope.launch {
+            val dup =
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    DatabaseUtil.findDownloadedByNormalizedUrl(trimmed)
+                }
+            if (dup != null && File(dup.videoPath).exists()) {
+                pendingDuplicateInfo = dup
+                pendingDuplicateAction = proceed
+            } else {
+                proceed()
+            }
+        }
+    }
 
     DownloadPageImplV2(
         modifier = modifier,
-        taskDownloadStateMap = downloader.getTaskStateMap(),
+        taskDownloadStateMap = taskStateMap,
         recentDownloads = recentDownloads,
+        activeDownloadCount = activeDownloadCount,
         downloadCallback = {
             view.slightHapticFeedback()
             dialogViewModel.postAction(Action.ShowSheet())
         },
         onDownloadUrl = { url ->
             view.slightHapticFeedback()
-            dialogViewModel.postAction(Action.ShowSheet(listOf(url)))
+            runWithDuplicateCheck(url) { dialogViewModel.postAction(Action.ShowSheet(listOf(url))) }
         },
         onVideoDownloadClick = {
             view.slightHapticFeedback()
@@ -297,18 +334,46 @@ fun DownloadPageV2(
         mutableStateOf(DownloadUtil.DownloadPreferences.createFromPreferences())
     }
 
+    pendingDuplicateInfo?.let { dupInfo ->
+        com.devrayan.pengu.ui.component.DuplicateLinkAlertDialog(
+            existingInfo = dupInfo,
+            onPlayExisting = {
+                val id = dupInfo.id
+                pendingDuplicateInfo = null
+                pendingDuplicateAction = null
+                onOpenPlayer(id)
+            },
+            onDownloadAgain = {
+                val proceed = pendingDuplicateAction
+                pendingDuplicateInfo = null
+                pendingDuplicateAction = null
+                proceed?.invoke()
+            },
+            onDismiss = {
+                pendingDuplicateInfo = null
+                pendingDuplicateAction = null
+            },
+        )
+    }
+
     if (showQuickSheet) {
         VidSnapQuickSheet(
             initialAudioMode = quickSheetAudioMode,
             onDismiss = { showQuickSheet = false },
             onStartPresetDownload = { url, presetPrefs ->
-                preferences = presetPrefs
-                dialogViewModel.postAction(Action.DownloadWithPreset(listOf(url), presetPrefs))
+                runWithDuplicateCheck(url) {
+                    preferences = presetPrefs
+                    dialogViewModel.postAction(Action.DownloadWithPreset(listOf(url), presetPrefs))
+                }
             },
             onOpenFullOptions = { url ->
-                dialogViewModel.postAction(
-                    Action.ShowSheet(if (url.isNotBlank()) listOf(url) else null)
-                )
+                if (url.isNotBlank()) {
+                    runWithDuplicateCheck(url) {
+                        dialogViewModel.postAction(Action.ShowSheet(listOf(url)))
+                    }
+                } else {
+                    dialogViewModel.postAction(Action.ShowSheet(null))
+                }
             },
             onOpenBrowserForSite = onOpenBrowser,
         )
@@ -324,8 +389,14 @@ fun DownloadPageV2(
     LaunchedEffect(sheetValue) {
         if (sheetValue == DownloadDialogViewModel.SheetValue.Expanded) {
             showDialog = true
-        } else {
-            launch { sheetState.hide() }.invokeOnCompletion { showDialog = false }
+        } else if (showDialog) {
+            try {
+                sheetState.hide()
+            } finally {
+                if (dialogViewModel.sheetValueFlow.value == DownloadDialogViewModel.SheetValue.Hidden) {
+                    showDialog = false
+                }
+            }
         }
     }
 
@@ -378,6 +449,7 @@ fun DownloadPageImplV2(
     modifier: Modifier = Modifier,
     taskDownloadStateMap: SnapshotStateMap<Task, Task.State>,
     recentDownloads: List<DownloadedVideoInfo> = emptyList(),
+    activeDownloadCount: Int = 0,
     downloadCallback: () -> Unit = {},
     onDownloadUrl: (String) -> Unit = {},
     onVideoDownloadClick: () -> Unit = {},
@@ -411,17 +483,20 @@ fun DownloadPageImplV2(
     }
 
     LaunchedEffect(selectedTask, taskDownloadStateMap.size) {
-        if (!taskDownloadStateMap.contains(selectedTask)) {
-            selectedTask == null
+        if (selectedTask != null && !taskDownloadStateMap.contains(selectedTask)) {
+            selectedTask = null
         }
     }
 
     Scaffold(
-        modifier = modifier.fillMaxSize().statusBarsPadding(),
+        modifier = modifier.fillMaxSize(),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
-    ) { windowInsetsPadding ->
+    ) { _ ->
         val lazyListState = rememberLazyGridState()
         var isGridView by rememberSaveable { mutableStateOf(true) }
+        val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
         CompositionLocalProvider(LocalOverscrollFactory provides null) {
             LazyVerticalGrid(
@@ -429,13 +504,18 @@ fun DownloadPageImplV2(
                 state = lazyListState,
                 columns = GridCells.Adaptive(240.dp),
                 contentPadding =
-                    windowInsetsPadding +
-                        PaddingValues(start = 0.dp, end = 0.dp, bottom = 90.dp),
+                    PaddingValues(
+                        start = 0.dp,
+                        end = 0.dp,
+                        top = topInset,
+                        bottom = 112.dp + bottomInset,
+                    ),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     VidSnapHomeHub(
                         recentDownloads = recentDownloads,
+                        activeDownloadCount = activeDownloadCount,
                         onDownloadUrl = onDownloadUrl,
                         onVideoDownloadClick = onVideoDownloadClick,
                         onAudioDownloadClick = onAudioDownloadClick,
@@ -587,25 +667,25 @@ fun DownloadPageImplV2(
             }
         }
     }
-    if (selectedTask != null) {
-        val task = selectedTask!!
-        val (downloadState, _, viewState) = taskDownloadStateMap[task] ?: return
-        SealModalBottomSheet(
-            sheetState = sheetState,
-            contentPadding = PaddingValues(),
-            onDismissRequest = {
-                scope.launch { sheetState.hide() }.invokeOnCompletion { selectedTask = null }
-            },
-        ) {
-            SheetContent(
-                task = task,
-                downloadState = downloadState,
-                viewState = viewState,
+    selectedTask?.let { task ->
+        taskDownloadStateMap[task]?.let { (downloadState, _, viewState) ->
+            SealModalBottomSheet(
+                sheetState = sheetState,
+                contentPadding = PaddingValues(),
                 onDismissRequest = {
                     scope.launch { sheetState.hide() }.invokeOnCompletion { selectedTask = null }
                 },
-                onActionPost = onActionPost,
-            )
+            ) {
+                SheetContent(
+                    task = task,
+                    downloadState = downloadState,
+                    viewState = viewState,
+                    onDismissRequest = {
+                        scope.launch { sheetState.hide() }.invokeOnCompletion { selectedTask = null }
+                    },
+                    onActionPost = onActionPost,
+                )
+            }
         }
     }
 }

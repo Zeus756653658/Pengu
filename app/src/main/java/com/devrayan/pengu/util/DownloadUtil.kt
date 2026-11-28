@@ -402,7 +402,7 @@ object DownloadUtil {
                         val secure = getLong(getColumnIndexOrThrow(CookieScheme.SECURE)) == 1L
                         val hostKey = getString(getColumnIndexOrThrow(CookieScheme.HOST))
 
-                        val host = if (hostKey[0] != '.') ".$hostKey" else hostKey
+                        val host = if (hostKey.isNotEmpty() && hostKey[0] != '.') ".$hostKey" else hostKey
                         cookieList.add(
                             Cookie(
                                 domain = host,
@@ -638,9 +638,10 @@ object DownloadUtil {
         videoPath: String,
     ): DownloadedVideoInfo =
         this.run {
+            val cleanTitle = if (CLEAN_FILENAMES.getBoolean()) cleanMediaTitle(title) else title
             DownloadedVideoInfo(
                 id = id,
-                videoTitle = title,
+                videoTitle = cleanTitle,
                 videoAuthor = uploader ?: channel ?: uploaderId.toString(),
                 videoUrl = webpageUrl ?: originalUrl.toString(),
                 thumbnailUrl = thumbnail.toHttpsUrl(),

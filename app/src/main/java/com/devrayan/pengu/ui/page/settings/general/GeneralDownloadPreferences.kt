@@ -82,6 +82,7 @@ import com.devrayan.pengu.ui.component.PreferenceSwitchWithDivider
 import com.devrayan.pengu.ui.component.SealDialog
 import com.devrayan.pengu.ui.page.download.NotificationPermissionDialog
 import com.devrayan.pengu.util.CONFIGURE
+import com.devrayan.pengu.util.CLEAN_FILENAMES
 import com.devrayan.pengu.util.CUSTOM_COMMAND
 import com.devrayan.pengu.util.DEBUG
 import com.devrayan.pengu.util.DISABLE_PREVIEW
@@ -302,6 +303,20 @@ fun GeneralDownloadPreferences(onNavigateBack: () -> Unit, navigateToTemplate: (
                             PreferenceUtil.updateValue(DEBUG, displayErrorReport)
                         },
                         isChecked = displayErrorReport,
+                    )
+                }
+
+                item {
+                    var cleanFilenames by CLEAN_FILENAMES.booleanState
+                    PreferenceSwitch(
+                        title = "Auto-clean media titles",
+                        description = "Remove messy #hashtags and extra tags from saved titles",
+                        icon = Icons.Outlined.Edit,
+                        isChecked = cleanFilenames,
+                        onClick = {
+                            cleanFilenames = !cleanFilenames
+                            PreferenceUtil.updateValue(CLEAN_FILENAMES, cleanFilenames)
+                        },
                     )
                 }
 

@@ -70,6 +70,12 @@ fun TroubleShootingPage(
                         modifier = Modifier,
                         text = stringResource(R.string.issue_tracker_hint),
                     )
+                    PreferenceItem(
+                        title = "Pengu Beta Program",
+                        description = "Test experimental builds & switch between Beta / Stable",
+                        icon = Icons.Outlined.Settings,
+                        onClick = { onNavigateTo(Route.BETA_PROGRAM) },
+                    )
                     val knownIssueUrlPengu = "https://github.com/Zeus756653658/Pengu/issues"
                     PreferenceItem(
                         title = "Pengu Issue Tracker",

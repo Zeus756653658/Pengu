@@ -1,8 +1,10 @@
 package com.devrayan.pengu.ui.theme
 
+import android.app.Activity
+import android.content.ContextWrapper
 import android.os.Build
-import android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.core.view.WindowCompat
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -161,17 +163,15 @@ fun PenguTheme(
     val view = LocalView.current
 
     LaunchedEffect(darkTheme) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (darkTheme) {
-                view.windowInsetsController?.setSystemBarsAppearance(
-                    0,
-                    APPEARANCE_LIGHT_STATUS_BARS,
-                )
-            } else {
-                view.windowInsetsController?.setSystemBarsAppearance(
-                    APPEARANCE_LIGHT_STATUS_BARS,
-                    APPEARANCE_LIGHT_STATUS_BARS,
-                )
+        var ctx = view.context
+        while (ctx is ContextWrapper && ctx !is Activity) {
+            ctx = ctx.baseContext
+        }
+        val window = (ctx as? Activity)?.window
+        if (window != null) {
+            WindowCompat.getInsetsController(window, view).apply {
+                isAppearanceLightStatusBars = !darkTheme
+                isAppearanceLightNavigationBars = !darkTheme
             }
         }
     }

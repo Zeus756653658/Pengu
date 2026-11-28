@@ -11,9 +11,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -60,7 +60,6 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -95,8 +94,10 @@ import com.devrayan.pengu.ui.page.downloadv2.DownloadPageV2
 import com.devrayan.pengu.ui.page.downloadv2.ProgressPage
 import com.devrayan.pengu.ui.page.downloadv2.configure.DownloadDialogViewModel
 import com.devrayan.pengu.ui.page.player.MediaPlayerPage
+import com.devrayan.pengu.ui.page.player.MusicLibraryPage
 import com.devrayan.pengu.ui.page.settings.SettingsPage
 import com.devrayan.pengu.ui.page.settings.about.AboutPage
+import com.devrayan.pengu.ui.page.settings.about.ChangelogPage
 import com.devrayan.pengu.ui.page.settings.about.CreditsPage
 import com.devrayan.pengu.ui.page.settings.about.UpdatePage
 import com.devrayan.pengu.ui.page.settings.appearance.AppearancePreferences
@@ -130,7 +131,16 @@ import org.koin.androidx.compose.koinViewModel
 private const val TAG = "HomeEntry"
 
 private val TopDestinations =
-    listOf(Route.HOME, Route.DOWNLOAD_QUEUE, Route.SETTINGS_PAGE, Route.DOWNLOADS)
+    listOf(Route.HOME, Route.DOWNLOAD_QUEUE, Route.DOWNLOADS, Route.MUSIC, Route.SETTINGS_PAGE)
+
+internal fun shouldPopBackToHomeForSheet(
+    sheetValue: DownloadDialogViewModel.SheetValue,
+    sheetState: DownloadDialogViewModel.SheetState,
+    currentRoute: String?,
+): Boolean =
+    sheetValue == DownloadDialogViewModel.SheetValue.Expanded &&
+        sheetState is DownloadDialogViewModel.SheetState.Configure &&
+        currentRoute != Route.HOME
 
 @Composable
 fun AppEntry(dialogViewModel: DownloadDialogViewModel) {
@@ -155,6 +165,21 @@ fun AppEntry(dialogViewModel: DownloadDialogViewModel) {
     var showSplash by rememberSaveable { mutableStateOf(true) }
     var detectedClipboardUrl by remember { mutableStateOf<String?>(null) }
     var lastDismissedClipboardUrl by rememberSaveable { mutableStateOf<String?>(null) }
+    var isDownloadsSelecting by remember { mutableStateOf(false) }
+    var showRateDialog by rememberSaveable { mutableStateOf(false) }
+    var rateCheckedThisSession by rememberSaveable { mutableStateOf(false) }
+
+    val historyForRate by DatabaseUtil.getDownloadHistoryFlow().collectAsStateWithLifecycle(emptyList())
+    LaunchedEffect(showSplash, historyForRate) {
+        if (!showSplash && !rateCheckedThisSession && historyForRate.isNotEmpty()) {
+            delay(1600)
+            rateCheckedThisSession = true
+            if (com.devrayan.pengu.ui.component.PenguRateManager.shouldShowNow(hasCompletedActivity = true)) {
+                com.devrayan.pengu.ui.component.PenguRateManager.recordPromptShown()
+                showRateDialog = true
+            }
+        }
+    }
 
     val onNavigateBack: () -> Unit = {
         with(navController) {
@@ -182,14 +207,20 @@ fun AppEntry(dialogViewModel: DownloadDialogViewModel) {
         navController.navigate(target) { launchSingleTop = true }
     }
 
-    if (sheetState is DownloadDialogViewModel.SheetState.Configure) {
-        if (navController.currentDestination?.route != Route.HOME) {
+    val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
+    var currentTopDestination by rememberSaveable { mutableStateOf(currentRoute) }
+
+    LaunchedEffect(sheetValue, sheetState) {
+        if (
+            shouldPopBackToHomeForSheet(
+                sheetValue = sheetValue,
+                sheetState = sheetState,
+                currentRoute = navController.currentDestination?.route,
+            )
+        ) {
             navController.popBackStack(route = Route.HOME, inclusive = false, saveState = true)
         }
     }
-
-    val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
-    var currentTopDestination by rememberSaveable { mutableStateOf(currentRoute) }
 
     LaunchedEffect(currentRoute) {
         if (currentRoute in TopDestinations) {
@@ -242,34 +273,12 @@ fun AppEntry(dialogViewModel: DownloadDialogViewModel) {
                 )
             },
         ) {
-            Scaffold(
-                containerColor = Color.Transparent,
-                bottomBar = {
-                    if (currentRoute in TopDestinations && windowWidth == WindowWidthSizeClass.Compact) {
-                        PenguBottomBar(
-                            currentRoute = currentRoute,
-                            onNavigate = { route ->
-                                if (currentRoute != route) {
-                                    navController.navigate(route) {
-                                        launchSingleTop = true
-                                        popUpTo(route = Route.HOME)
-                                    }
-                                }
-                            },
-                        )
-                    }
-                },
-            ) { innerPadding ->
-                Box(
-                    modifier =
-                        Modifier.fillMaxSize()
-                            .padding(bottom = innerPadding.calculateBottomPadding()),
+            Box(modifier = Modifier.fillMaxSize()) {
+                NavHost(
+                    modifier = Modifier.fillMaxSize().align(Alignment.Center),
+                    navController = navController,
+                    startDestination = Route.HOME,
                 ) {
-                    NavHost(
-                        modifier = Modifier.align(Alignment.Center),
-                        navController = navController,
-                        startDestination = Route.HOME,
-                    ) {
                         animatedComposable(Route.HOME) {
                             DownloadPageV2(
                                 dialogViewModel = dialogViewModel,
@@ -319,7 +328,32 @@ fun AppEntry(dialogViewModel: DownloadDialogViewModel) {
                                         launchSingleTop = true
                                     }
                                 },
+                                onSelectionModeChanged = { isDownloadsSelecting = it },
                                 onNavigateBack = onNavigateBack,
+                            )
+                        }
+                        animatedComposable(Route.MUSIC) {
+                            MusicLibraryPage(
+                                onOpenPlayer = { id ->
+                                    navController.navigate(Route.PLAYER id id) {
+                                        launchSingleTop = true
+                                    }
+                                },
+                                onOpenRingtoneMaker = { filePath ->
+                                    val target =
+                                        if (filePath.isNotBlank()) {
+                                            "${Route.TOOLS}?${Route.TOOLS_TAB}=0&${Route.TOOLS_PATH}=${Uri.encode(filePath)}"
+                                        } else {
+                                            Route.TOOLS
+                                        }
+                                    navController.navigate(target) { launchSingleTop = true }
+                                },
+                                onNavigateToDownloads = {
+                                    navController.navigate(Route.DOWNLOADS) {
+                                        launchSingleTop = true
+                                        popUpTo(route = Route.HOME)
+                                    }
+                                },
                             )
                         }
                         animatedComposableVariant(
@@ -330,8 +364,14 @@ fun AppEntry(dialogViewModel: DownloadDialogViewModel) {
                             MediaPlayerPage(
                                 mediaId = entry.arguments?.getInt(Route.MEDIA_ID) ?: -1,
                                 onNavigateBack = onNavigateBack,
-                                onOpenTools = {
-                                    navController.navigate(Route.TOOLS) { launchSingleTop = true }
+                                onOpenTools = { filePath ->
+                                    val target =
+                                        if (filePath.isNotBlank()) {
+                                            "${Route.TOOLS}?${Route.TOOLS_TAB}=1&${Route.TOOLS_PATH}=${Uri.encode(filePath)}"
+                                        } else {
+                                            Route.TOOLS
+                                        }
+                                    navController.navigate(target) { launchSingleTop = true }
                                 },
                             )
                         }
@@ -365,8 +405,28 @@ fun AppEntry(dialogViewModel: DownloadDialogViewModel) {
                                 },
                             )
                         }
-                        animatedComposableVariant(Route.TOOLS) {
+                        animatedComposableVariant(
+                            route =
+                                "${Route.TOOLS}?${Route.TOOLS_TAB}={${Route.TOOLS_TAB}}&${Route.TOOLS_PATH}={${Route.TOOLS_PATH}}",
+                            arguments =
+                                listOf(
+                                    navArgument(Route.TOOLS_TAB) {
+                                        type = NavType.IntType
+                                        defaultValue = 0
+                                    },
+                                    navArgument(Route.TOOLS_PATH) {
+                                        type = NavType.StringType
+                                        defaultValue = ""
+                                    },
+                                ),
+                        ) { entry ->
+                            val tab = entry.arguments?.getInt(Route.TOOLS_TAB) ?: 0
+                            val rawPath = entry.arguments?.getString(Route.TOOLS_PATH).orEmpty()
+                            val decodedPath =
+                                if (rawPath.isNotBlank()) Uri.decode(rawPath) else ""
                             MediaToolsPage(
+                                initialTab = tab,
+                                initialFilePath = decodedPath,
                                 onNavigateBack = onNavigateBack,
                                 onOpenDownloadedFile = openPathInPlayerOrExternal,
                             )
@@ -397,44 +457,166 @@ fun AppEntry(dialogViewModel: DownloadDialogViewModel) {
                         )
                     }
 
-                    AnimatedVisibility(
-                        visible = showClipboardBanner,
-                        enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
-                        exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
-                        modifier =
-                            Modifier.align(Alignment.BottomCenter)
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                    val playbackState by
+                        com.devrayan.pengu.util.PenguAudioManager.state.collectAsStateWithLifecycle()
+                    var pendingClipDuplicate by remember {
+                        mutableStateOf<com.devrayan.pengu.database.objects.DownloadedVideoInfo?>(null)
+                    }
+                    var pendingClipUrl by remember { mutableStateOf<String?>(null) }
+
+                    val showMiniPlayer =
+                        !showSplash &&
+                            !showClipboardBanner &&
+                            !(currentRoute == Route.DOWNLOADS && isDownloadsSelecting) &&
+                            playbackState.mediaInfo != null &&
+                            playbackState.isAudioOnly &&
+                            currentRoute?.startsWith(Route.PLAYER) != true &&
+                            currentRoute != Route.MUSIC
+
+                    Column(
+                        modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        val url = detectedClipboardUrl.orEmpty()
-                        ClipboardDetectedBanner(
-                            url = url,
-                            isDark = isDark,
-                            onDownloadClick = {
-                                view.slightHapticFeedback()
-                                lastDismissedClipboardUrl = url
-                                detectedClipboardUrl = null
-                                if (navController.currentDestination?.route != Route.HOME) {
-                                    navController.popBackStack(
-                                        route = Route.HOME,
-                                        inclusive = false,
-                                        saveState = true,
+                        AnimatedVisibility(
+                            visible = showMiniPlayer,
+                            enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
+                            exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        ) {
+                            com.devrayan.pengu.ui.component.PenguMiniPlayerBar(
+                                state = playbackState,
+                                isDark = isDark,
+                                onOpenPlayer = { id ->
+                                    navController.navigate(Route.PLAYER id id) {
+                                        launchSingleTop = true
+                                    }
+                                },
+                                onTogglePlay = {
+                                    com.devrayan.pengu.util.PenguAudioManager.togglePlayPause()
+                                },
+                                onClose = {
+                                    com.devrayan.pengu.util.PenguAudioManager.stopAndClear()
+                                },
+                            )
+                        }
+
+                        AnimatedVisibility(
+                            visible = showClipboardBanner,
+                            enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
+                            exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        ) {
+                            val url = detectedClipboardUrl.orEmpty()
+                            ClipboardDetectedBanner(
+                                url = url,
+                                isDark = isDark,
+                                onDownloadClick = {
+                                    view.slightHapticFeedback()
+                                    lastDismissedClipboardUrl = url
+                                    detectedClipboardUrl = null
+                                    scope.launch {
+                                        val dup =
+                                            kotlinx.coroutines.withContext(
+                                                kotlinx.coroutines.Dispatchers.IO
+                                            ) {
+                                                com.devrayan.pengu.util.DatabaseUtil
+                                                    .findDownloadedByNormalizedUrl(url)
+                                            }
+                                        if (
+                                            dup != null &&
+                                                java.io.File(dup.videoPath).exists()
+                                        ) {
+                                            pendingClipDuplicate = dup
+                                            pendingClipUrl = url
+                                        } else {
+                                            if (navController.currentDestination?.route != Route.HOME) {
+                                                navController.popBackStack(
+                                                    route = Route.HOME,
+                                                    inclusive = false,
+                                                    saveState = true,
+                                                )
+                                            }
+                                            dialogViewModel.postAction(
+                                                DownloadDialogViewModel.Action.ShowSheet(listOf(url))
+                                            )
+                                        }
+                                    }
+                                },
+                                onDismiss = {
+                                    lastDismissedClipboardUrl = url
+                                    detectedClipboardUrl = null
+                                },
+                            )
+                        }
+
+                        val showBottomPill =
+                            currentRoute in TopDestinations &&
+                                windowWidth == WindowWidthSizeClass.Compact &&
+                                !(currentRoute == Route.DOWNLOADS && isDownloadsSelecting)
+                        AnimatedVisibility(
+                            visible = showBottomPill,
+                            enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
+                            exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
+                        ) {
+                            PenguBottomBar(
+                                currentRoute = currentRoute,
+                                onNavigate = { route ->
+                                    if (currentRoute != route) {
+                                        isDownloadsSelecting = false
+                                        navController.navigate(route) {
+                                            launchSingleTop = true
+                                            popUpTo(route = Route.HOME)
+                                        }
+                                    }
+                                },
+                            )
+                        }
+                    }
+
+                    pendingClipDuplicate?.let { dupInfo ->
+                        com.devrayan.pengu.ui.component.DuplicateLinkAlertDialog(
+                            existingInfo = dupInfo,
+                            onPlayExisting = {
+                                val id = dupInfo.id
+                                pendingClipDuplicate = null
+                                pendingClipUrl = null
+                                navController.navigate(Route.PLAYER id id) {
+                                    launchSingleTop = true
+                                }
+                            },
+                            onDownloadAgain = {
+                                val targetUrl = pendingClipUrl.orEmpty()
+                                pendingClipDuplicate = null
+                                pendingClipUrl = null
+                                if (targetUrl.isNotBlank()) {
+                                    if (navController.currentDestination?.route != Route.HOME) {
+                                        navController.popBackStack(
+                                            route = Route.HOME,
+                                            inclusive = false,
+                                            saveState = true,
+                                        )
+                                    }
+                                    dialogViewModel.postAction(
+                                        DownloadDialogViewModel.Action.ShowSheet(listOf(targetUrl))
                                     )
                                 }
-                                dialogViewModel.postAction(
-                                    DownloadDialogViewModel.Action.ShowSheet(listOf(url))
-                                )
                             },
                             onDismiss = {
-                                lastDismissedClipboardUrl = url
-                                detectedClipboardUrl = null
+                                pendingClipDuplicate = null
+                                pendingClipUrl = null
                             },
                         )
                     }
 
                     AppUpdater()
                     YtdlpUpdater()
+
+                    if (showRateDialog) {
+                        com.devrayan.pengu.ui.component.RatePenguDialog(
+                            onDismiss = { showRateDialog = false }
+                        )
+                    }
                 }
-            }
         }
 
         PenguSplashOverlay(
@@ -535,11 +717,11 @@ private fun PenguSplashOverlay(
     isDark: Boolean,
     onFinished: () -> Unit,
 ) {
-    val logoScale = remember { Animatable(0.74f) }
+    val textScale = remember { Animatable(0.88f) }
 
     LaunchedEffect(visible) {
         if (visible) {
-            logoScale.animateTo(
+            textScale.animateTo(
                 targetValue = 1f,
                 animationSpec =
                     spring(
@@ -547,14 +729,12 @@ private fun PenguSplashOverlay(
                         stiffness = Spring.StiffnessLow,
                     ),
             )
-            delay(360)
-            onFinished()
         }
     }
 
     AnimatedVisibility(
         visible = visible,
-        exit = fadeOut(animationSpec = tween(260)),
+        exit = fadeOut(animationSpec = tween(240)),
         modifier = Modifier.fillMaxSize().zIndex(30f),
     ) {
         Box(
@@ -565,36 +745,35 @@ private fun PenguSplashOverlay(
                             if (isDark) listOf(Color(0xFF0A0A0E), Color(0xFF1A162B))
                             else listOf(Color(0xFFFFFFFF), Color(0xFFF3E8FF))
                         )
+                    )
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onFinished,
                     ),
             contentAlignment = Alignment.Center,
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.scale(logoScale.value),
+                modifier = Modifier.scale(textScale.value),
             ) {
-                Box(
-                    modifier =
-                        Modifier.size(104.dp)
-                            .shadow(18.dp, RoundedCornerShape(28.dp))
-                            .clip(RoundedCornerShape(28.dp))
-                            .background(if (isDark) Color(0xFF23232E) else Color.White)
-                            .padding(14.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.pengu_logo),
-                        contentDescription = "Pengu",
-                        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(18.dp)),
-                    )
-                }
-                Spacer(Modifier.height(20.dp))
+                val splashBadgeStyle =
+                    com.devrayan.pengu.util.PreferenceUtil.run {
+                        com.devrayan.pengu.util.PENGU_BADGE_STYLE.getInt()
+                    }
+                com.devrayan.pengu.ui.component.PenguWavingMascot(
+                    badgeStyle = splashBadgeStyle,
+                    isDark = isDark,
+                    onGreetingFinished = onFinished,
+                )
+                Spacer(Modifier.height(14.dp))
                 Text(
                     text = "Pengu",
                     fontSize = 28.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = MaterialTheme.colorScheme.onBackground,
                 )
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(5.dp))
                 Text(
                     text = "Video & Audio Downloader",
                     fontSize = 13.sp,
@@ -647,10 +826,19 @@ fun NavGraphBuilder.settingsGraph(
                 onNavigateBack = onNavigateBack,
                 onNavigateToCreditsPage = { onNavigateTo(Route.CREDITS) },
                 onNavigateToUpdatePage = { onNavigateTo(Route.AUTO_UPDATE) },
+                onNavigateToChangelogPage = { onNavigateTo(Route.CHANGELOG) },
+                onNavigateToBetaProgram = { onNavigateTo(Route.BETA_PROGRAM) },
             )
         }
+        animatedComposable(Route.CHANGELOG) { ChangelogPage(onNavigateBack = onNavigateBack) }
         animatedComposable(Route.CREDITS) { CreditsPage(onNavigateBack) }
-        animatedComposable(Route.AUTO_UPDATE) { UpdatePage(onNavigateBack) }
+        animatedComposable(Route.AUTO_UPDATE) {
+            UpdatePage(
+                onNavigateBack = onNavigateBack,
+                onOpenChangelog = { onNavigateTo(Route.CHANGELOG) },
+                onOpenBetaProgram = { onNavigateTo(Route.BETA_PROGRAM) },
+            )
+        }
         animatedComposable(Route.APPEARANCE) {
             AppearancePreferences(onNavigateBack = onNavigateBack, onNavigateTo = onNavigateTo)
         }
@@ -694,6 +882,28 @@ fun NavGraphBuilder.settingsGraph(
         }
         animatedComposable(Route.TROUBLESHOOTING) {
             TroubleShootingPage(onNavigateTo = onNavigateTo, onBack = onNavigateBack)
+        }
+        animatedComposable(Route.BETA_PROGRAM) {
+            com.devrayan.pengu.ui.page.settings.beta.BetaProgramPage(
+                onNavigateBack = onNavigateBack,
+                onNavigateTo = onNavigateTo,
+            )
+        }
+        animatedComposable(Route.BETA_MY_PROGRAM) {
+            com.devrayan.pengu.ui.page.settings.beta.MyTestingProgramPage(
+                onNavigateBack = onNavigateBack
+            )
+        }
+        animatedComposable(Route.BETA_RELEASE_DETAIL) {
+            com.devrayan.pengu.ui.page.settings.beta.BetaReleaseDetailsPage(
+                onNavigateBack = onNavigateBack
+            )
+        }
+        animatedComposable(Route.BETA_HISTORY) {
+            com.devrayan.pengu.ui.page.settings.beta.BetaReleaseHistoryPage(
+                onNavigateBack = onNavigateBack,
+                onNavigateTo = onNavigateTo,
+            )
         }
     }
 }

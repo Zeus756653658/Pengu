@@ -194,7 +194,7 @@ fun VideoDetailDrawerImpl(
                 horizontalArrangement = Arrangement.End,
             ) {
                 OutlinedButtonWithIcon(
-                    modifier = Modifier.padding(horizontal = 12.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp),
                     onClick = onDelete,
                     icon = Icons.Outlined.Delete,
                     text = stringResource(R.string.remove),

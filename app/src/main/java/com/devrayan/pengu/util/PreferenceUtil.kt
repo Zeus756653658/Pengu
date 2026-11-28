@@ -115,6 +115,27 @@ const val YT_DLP_UPDATE_CHANNEL = "yt-dlp_update_channel"
 const val YT_DLP_UPDATE_TIME = "yt-dlp_last_update"
 const val YT_DLP_UPDATE_INTERVAL = "yt-dlp_update_interval"
 
+const val CLEAN_FILENAMES = "clean_filenames"
+const val PENGU_BADGE_STYLE = "pengu_badge_style"
+const val STATS_TOOL_OPS = "stats_tool_ops"
+
+const val PENGU_PLAYER_STYLE = "pengu_player_style"
+const val PENGU_SLIDER_STYLE = "pengu_slider_style"
+const val PENGU_EQ_ENABLED = "pengu_eq_enabled"
+const val PENGU_EQ_PRESET = "pengu_eq_preset"
+const val PENGU_BASS_STRENGTH = "pengu_bass_strength"
+const val PENGU_ISLAND_ENABLED = "pengu_island_enabled"
+const val PENGU_OVERLAY_ISLAND_ENABLED = "pengu_overlay_island_enabled"
+const val PENGU_ISLAND_OFFSET_DP = "pengu_island_offset_dp"
+const val RATE_STARRED_OR_DISMISSED = "rate_starred_or_dismissed"
+const val RATE_PROMPT_HISTORY = "rate_prompt_history"
+
+const val BETA_ENROLLMENT_TYPE = "beta_enrollment_type"
+const val BETA_ENROLLMENT_STATUS = "beta_enrollment_status"
+const val BETA_TESTER_ID = "beta_tester_id"
+const val BETA_INVITE_CODE = "beta_invite_code"
+const val BETA_SERVER_URL = "beta_server_url"
+
 private const val INTERVAL_DAY = 86_400_000L
 private const val INTERVAL_WEEK = 86_400_000L * 7
 private const val INTERVAL_MONTH = 86_400_000L * 30
@@ -206,6 +227,8 @@ private val StringPreferenceDefaults =
         SUBTITLE_LANGUAGE to "en.*,.*-orig",
         OUTPUT_TEMPLATE to DownloadUtil.OUTPUT_TEMPLATE_ID,
         CUSTOM_OUTPUT_TEMPLATE to DownloadUtil.OUTPUT_TEMPLATE_ID,
+        BETA_ENROLLMENT_TYPE to "none",
+        BETA_ENROLLMENT_STATUS to "not_enrolled",
     )
 
 private val BooleanPreferenceDefaults =
@@ -218,6 +241,11 @@ private val BooleanPreferenceDefaults =
         NOTIFICATION to true,
         EMBED_METADATA to true,
         USE_CUSTOM_AUDIO_PRESET to false,
+        CLEAN_FILENAMES to true,
+        PENGU_EQ_ENABLED to false,
+        PENGU_ISLAND_ENABLED to false,
+        PENGU_OVERLAY_ISLAND_ENABLED to false,
+        RATE_STARRED_OR_DISMISSED to false,
     )
 
 private val IntPreferenceDefaults =
@@ -231,6 +259,11 @@ private val IntPreferenceDefaults =
         AUDIO_CONVERSION_FORMAT to NOT_SPECIFIED,
         VIDEO_QUALITY to NOT_SPECIFIED,
         VIDEO_FORMAT to FORMAT_QUALITY,
+        PENGU_PLAYER_STYLE to 0,
+        PENGU_SLIDER_STYLE to 0,
+        PENGU_EQ_PRESET to 0,
+        PENGU_BASS_STRENGTH to 0,
+        PENGU_ISLAND_OFFSET_DP to 0,
         UPDATE_CHANNEL to
             if (
                 BuildConfig.VERSION_NAME.let {
@@ -287,6 +320,8 @@ object PreferenceUtil {
     fun encodeString(key: String, string: String) = key.updateString(string)
 
     fun containsKey(key: String) = kv.containsKey(key)
+
+    fun incrementToolOps() = STATS_TOOL_OPS.updateInt(STATS_TOOL_OPS.getInt() + 1)
 
     fun getAudioConvertFormat(): Int = AUDIO_CONVERSION_FORMAT.getInt()
 

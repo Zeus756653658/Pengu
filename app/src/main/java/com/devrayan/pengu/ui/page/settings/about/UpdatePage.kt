@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material.icons.outlined.Update
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -39,6 +40,7 @@ import com.devrayan.pengu.R
 import com.devrayan.pengu.ui.common.intState
 import com.devrayan.pengu.ui.component.BackButton
 import com.devrayan.pengu.ui.component.PreferenceInfo
+import com.devrayan.pengu.ui.component.PreferenceItem
 import com.devrayan.pengu.ui.component.PreferenceSingleChoiceItem
 import com.devrayan.pengu.ui.component.PreferenceSubtitle
 import com.devrayan.pengu.ui.component.PreferenceSwitchWithContainer
@@ -58,7 +60,11 @@ import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UpdatePage(onNavigateBack: () -> Unit) {
+fun UpdatePage(
+    onNavigateBack: () -> Unit,
+    onOpenChangelog: () -> Unit = {},
+    onOpenBetaProgram: () -> Unit = {},
+) {
     val scrollBehavior =
         TopAppBarDefaults.exitUntilCollapsedScrollBehavior(
             rememberTopAppBarState(),
@@ -164,6 +170,24 @@ fun UpdatePage(onNavigateBack: () -> Unit) {
                         }
                     }
                     androidx.compose.material3.HorizontalDivider()
+                }
+                item {
+                    PreferenceItem(
+                        title = "Changelog & 1.3.0 Plan",
+                        description = "View bundled release notes, fixes & upcoming 1.3.0 roadmap",
+                        icon = Icons.Outlined.NewReleases,
+                    ) {
+                        onOpenChangelog()
+                    }
+                }
+                item {
+                    PreferenceItem(
+                        title = "Pengu Beta Program",
+                        description = "Open & Closed Beta enrollment, release history & checksum verify",
+                        icon = Icons.Outlined.Update,
+                    ) {
+                        onOpenBetaProgram()
+                    }
                 }
                 item {
                     PreferenceInfo(

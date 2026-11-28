@@ -34,9 +34,11 @@ object NotificationUtil {
     private const val PROGRESS_INITIAL = 0
     private const val CHANNEL_ID = "download_notification"
     private const val SERVICE_CHANNEL_ID = "download_service"
+    const val MEDIA_CHANNEL_ID = "media_playback"
     private const val NOTIFICATION_GROUP_ID = "pengu.download.notification"
     private const val DEFAULT_NOTIFICATION_ID = 100
     const val SERVICE_NOTIFICATION_ID = 123
+    const val MEDIA_NOTIFICATION_ID = 124
     private lateinit var serviceNotification: Notification
 
     //    private var builder =
@@ -55,15 +57,24 @@ object NotificationUtil {
             NotificationChannel(CHANNEL_ID, name, importance).apply {
                 description = descriptionText
                 group = NOTIFICATION_GROUP_ID
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
         val serviceChannel =
             NotificationChannel(SERVICE_CHANNEL_ID, name, importance).apply {
                 description = context.getString(R.string.service_title)
                 group = NOTIFICATION_GROUP_ID
             }
+        val mediaChannel =
+            NotificationChannel(MEDIA_CHANNEL_ID, "Media Player", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Background audio playback & Dynamic Island controls"
+                group = NOTIFICATION_GROUP_ID
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                setSound(null, null)
+            }
         notificationManager.createNotificationChannelGroup(channelGroup)
         notificationManager.createNotificationChannel(channel)
         notificationManager.createNotificationChannel(serviceChannel)
+        notificationManager.createNotificationChannel(mediaChannel)
     }
 
     fun notifyProgress(
@@ -90,19 +101,30 @@ object NotificationUtil {
                     }
             }
 
-        NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_stat_pengu)
-            .setContentTitle(title)
-            .setProgress(PROGRESS_MAX, progress, progress <= 0)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-            .run {
-                pendingIntent?.let {
-                    addAction(R.drawable.outline_cancel_24, context.getString(R.string.cancel), it)
+        val compatBuilder =
+            NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_stat_pengu)
+                .setContentTitle(title)
+                .setProgress(PROGRESS_MAX, progress, progress <= 0)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setCategory(NotificationCompat.CATEGORY_PROGRESS)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                .apply {
+                    pendingIntent?.let {
+                        addAction(R.drawable.outline_cancel_24, context.getString(R.string.cancel), it)
+                    }
+                    val extras = android.os.Bundle().apply {
+                        putBoolean("android.requestPromotedOngoing", true)
+                        if (progress > 0) {
+                            putString("android.shortCriticalText", "$progress%")
+                        }
+                    }
+                    addExtras(extras)
                 }
-                notificationManager.notify(notificationId, build())
-            }
+        val built = compatBuilder.build()
+        notificationManager.notify(notificationId, built)
     }
 
     fun finishNotification(
@@ -253,6 +275,114 @@ object NotificationUtil {
 
     fun cancelAllNotifications() {
         notificationManager.cancelAll()
+    }
+
+    fun showMediaNotification(
+        title: String,
+        subtitle: String,
+        isPlaying: Boolean,
+    ) {
+        val prevIntent =
+            PendingIntent.getBroadcast(
+                context.applicationContext,
+                MEDIA_NOTIFICATION_ID + 3,
+                Intent(context.applicationContext, NotificationActionReceiver::class.java)
+                    .putExtra(ACTION_KEY, NotificationActionReceiver.ACTION_MEDIA_PREV),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        val toggleIntent =
+            PendingIntent.getBroadcast(
+                context.applicationContext,
+                MEDIA_NOTIFICATION_ID + 1,
+                Intent(context.applicationContext, NotificationActionReceiver::class.java)
+                    .putExtra(ACTION_KEY, NotificationActionReceiver.ACTION_MEDIA_TOGGLE),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        val nextIntent =
+            PendingIntent.getBroadcast(
+                context.applicationContext,
+                MEDIA_NOTIFICATION_ID + 4,
+                Intent(context.applicationContext, NotificationActionReceiver::class.java)
+                    .putExtra(ACTION_KEY, NotificationActionReceiver.ACTION_MEDIA_NEXT),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        val stopIntent =
+            PendingIntent.getBroadcast(
+                context.applicationContext,
+                MEDIA_NOTIFICATION_ID + 2,
+                Intent(context.applicationContext, NotificationActionReceiver::class.java)
+                    .putExtra(ACTION_KEY, NotificationActionReceiver.ACTION_MEDIA_STOP),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        val openIntent =
+            PendingIntent.getActivity(
+                context.applicationContext,
+                MEDIA_NOTIFICATION_ID,
+                Intent(context.applicationContext, com.devrayan.pengu.MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+                },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        val notification =
+            NotificationCompat.Builder(context, MEDIA_CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_stat_pengu)
+                .setContentTitle(title)
+                .setContentText(subtitle)
+                .setOngoing(isPlaying)
+                .setOnlyAlertOnce(true)
+                .setContentIntent(openIntent)
+                .addAction(
+                    R.drawable.outline_skip_previous_24,
+                    "Previous",
+                    prevIntent,
+                )
+                .addAction(
+                    if (isPlaying) R.drawable.outline_pause_24 else R.drawable.outline_play_arrow_24,
+                    if (isPlaying) "Pause" else "Play",
+                    toggleIntent,
+                )
+                .addAction(
+                    R.drawable.outline_skip_next_24,
+                    "Next",
+                    nextIntent,
+                )
+                .addAction(
+                    R.drawable.outline_cancel_24,
+                    context.getString(R.string.cancel),
+                    stopIntent,
+                )
+                .build()
+        notificationManager.notify(MEDIA_NOTIFICATION_ID, notification)
+    }
+
+    /**
+     * Enables Android 16+ Live Updates (Promoted Ongoing Notification) cleanly via reflection
+     * while staying 100% compatible with compileSdk 35 and Android 7–15 OEM Live Islands.
+     */
+    fun applyPromotedLiveUpdateCompat(builder: Notification.Builder, shortText: String) {
+        val extras = android.os.Bundle().apply {
+            putBoolean("android.requestPromotedOngoing", true)
+            if (shortText.isNotBlank()) {
+                putString("android.shortCriticalText", shortText)
+            }
+        }
+        builder.addExtras(extras)
+        if (Build.VERSION.SDK_INT >= 36) {
+            runCatching {
+                builder.javaClass
+                    .getMethod("setRequestPromotedOngoing", Boolean::class.javaPrimitiveType)
+                    .invoke(builder, true)
+            }
+            runCatching {
+                builder.javaClass
+                    .getMethod("setShortCriticalText", CharSequence::class.java)
+                    .invoke(builder, shortText)
+            }
+        }
+    }
+
+    fun cancelMediaNotification() {
+        notificationManager.cancel(MEDIA_NOTIFICATION_ID)
     }
 
     fun areNotificationsEnabled(): Boolean {

@@ -15,13 +15,19 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
@@ -36,12 +42,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.ModalBottomSheetValue
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.rememberModalBottomSheetState
-import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -50,19 +56,19 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconToggleButton
-import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TriStateCheckbox
-import androidx.compose.material3.VerticalDivider
-import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -72,6 +78,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -152,23 +159,22 @@ private const val TAG = "VideoListPage"
 fun VideoListPage(
     viewModel: VideoListViewModel = koinViewModel(),
     onOpenPlayer: (Int) -> Unit = {},
+    onSelectionModeChanged: (Boolean) -> Unit = {},
     onNavigateBack: () -> Unit,
 ) {
     val viewState by viewModel.stateFlow.collectAsStateWithLifecycle()
-    val fullVideoList by viewModel.videoListFlow.collectAsStateWithLifecycle(emptyList())
-    val searchedVideoList by
+    val rawFullVideoList by viewModel.videoListFlow.collectAsStateWithLifecycle(emptyList())
+    val rawSearchedVideoList by
         viewModel.searchedVideoListFlow.collectAsStateWithLifecycle(emptyList())
 
-    val videoList = if (viewState.isSearching) searchedVideoList else fullVideoList
+    val fullVideoList = rawFullVideoList
+    val videoList =
+        remember(viewState.isSearching, rawSearchedVideoList, fullVideoList) {
+            if (viewState.isSearching) rawSearchedVideoList else fullVideoList
+        }
     val filterSet by viewModel.filterSetFlow.collectAsState(mutableSetOf())
 
-    val scrollBehavior =
-        if (fullVideoList.isNotEmpty())
-            TopAppBarDefaults.exitUntilCollapsedScrollBehavior(
-                rememberTopAppBarState(),
-                canScroll = { true },
-            )
-        else TopAppBarDefaults.pinnedScrollBehavior()
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
     val scope = rememberCoroutineScope()
     val softKeyboardController = LocalSoftwareKeyboardController.current
@@ -209,10 +215,15 @@ fun VideoListPage(
     val selectedItemIds = remember(videoList, viewState) { mutableStateListOf<Int>() }
 
     LaunchedEffect(isSelectEnabled) {
+        onSelectionModeChanged(isSelectEnabled)
         if (!isSelectEnabled) {
             delay(200)
             selectedItemIds.clear()
         }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { onSelectionModeChanged(false) }
     }
 
     val selectedVideoCount =
@@ -279,13 +290,25 @@ fun VideoListPage(
     }
 
     Scaffold(
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            LargeTopAppBar(
+            TopAppBar(
                 title = {
-                    Text(modifier = Modifier, text = stringResource(R.string.downloads_history))
+                    Text(
+                        text = stringResource(R.string.downloads_history),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 22.sp,
+                    )
                 },
                 navigationIcon = { BackButton { onNavigateBack() } },
+                colors =
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        scrolledContainerColor = MaterialTheme.colorScheme.background,
+                    ),
+                windowInsets = WindowInsets.statusBars,
                 actions = {
                     Row {
                         if (fullVideoList.isNotEmpty()) {
@@ -365,49 +388,77 @@ fun VideoListPage(
         bottomBar = {
             AnimatedVisibility(
                 isSelectEnabled,
-                enter = expandVertically(),
-                exit = shrinkVertically(),
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut(),
             ) {
-                BottomAppBar(modifier = Modifier) {
-                    val selectAllText = stringResource(R.string.select_all)
-                    TriStateCheckbox(
-                        modifier = Modifier.semantics { this.contentDescription = selectAllText },
-                        state = checkBoxState,
-                        onClick = {
-                            view.slightHapticFeedback()
-                            when (checkBoxState) {
-                                ToggleableState.On -> selectedItemIds.clear()
-                                else -> {
-                                    for (item in videoList) {
-                                        if (
-                                            !selectedItemIds.contains(item.id) &&
-                                                item.filterSort(viewState, filterSet)
-                                        ) {
-                                            selectedItemIds.add(item.id)
+                Surface(
+                    shape = CircleShape,
+                    tonalElevation = 8.dp,
+                    shadowElevation = 14.dp,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        val selectAllText = stringResource(R.string.select_all)
+                        TriStateCheckbox(
+                            modifier = Modifier.semantics { this.contentDescription = selectAllText },
+                            state = checkBoxState,
+                            onClick = {
+                                view.slightHapticFeedback()
+                                when (checkBoxState) {
+                                    ToggleableState.On -> selectedItemIds.clear()
+                                    else -> {
+                                        for (item in videoList) {
+                                            if (
+                                                !selectedItemIds.contains(item.id) &&
+                                                    item.filterSort(viewState, filterSet)
+                                            ) {
+                                                selectedItemIds.add(item.id)
+                                            }
                                         }
                                     }
                                 }
-                            }
-                        },
-                    )
-                    Text(
-                        modifier = Modifier.weight(1f),
-                        text =
-                            stringResource(R.string.multiselect_item_count)
-                                .format(selectedVideoCount.intValue, selectedAudioCount.intValue),
-                        style = MaterialTheme.typography.labelLarge,
-                    )
-                    IconButton(
-                        onClick = {
-                            view.slightHapticFeedback()
-                            showRemoveMultipleItemsDialog = true
-                        },
-                        enabled = selectedItemIds.isNotEmpty(),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.DeleteSweep,
-                            contentDescription = stringResource(id = R.string.remove),
+                            },
                         )
+                        Text(
+                            modifier = Modifier.weight(1f),
+                            text =
+                                stringResource(R.string.multiselect_item_count)
+                                    .format(selectedVideoCount.intValue, selectedAudioCount.intValue),
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        IconButton(
+                            onClick = {
+                                view.slightHapticFeedback()
+                                showRemoveMultipleItemsDialog = true
+                            },
+                            enabled = selectedItemIds.isNotEmpty(),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.DeleteSweep,
+                                contentDescription = stringResource(id = R.string.remove),
+                                tint =
+                                    if (selectedItemIds.isNotEmpty()) Color(0xFFEF4444)
+                                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                view.slightHapticFeedback()
+                                isSelectEnabled = false
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Close,
+                                contentDescription = "Cancel selection",
+                            )
+                        }
                     }
                 }
             }
@@ -444,8 +495,17 @@ fun VideoListPage(
                 else -> 1
             }
         val span: (LazyGridItemSpanScope) -> GridItemSpan = { GridItemSpan(cellCount) }
-        LazyColumn(modifier = Modifier, state = lazyListState, contentPadding = innerPadding) {
-            if (fullVideoList.isNotEmpty()) {
+        val navBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            state = lazyListState,
+            contentPadding =
+                PaddingValues(
+                    top = innerPadding.calculateTopPadding(),
+                    bottom = if (isSelectEnabled) innerPadding.calculateBottomPadding() + 16.dp else 112.dp + navBottomInset,
+                ),
+        ) {
+            if (rawFullVideoList.isNotEmpty()) {
                 item {
                     val isDark = LocalDarkTheme.current.isDarkTheme()
                     val totalDownloadsBytes = remember(fileSizeMap) { fileSizeMap.values.sum() }
@@ -475,7 +535,7 @@ fun VideoListPage(
                             )
                         }
 
-                        // VidSnap Screen 4: All / Videos / MP3 segmented tabs
+                        // All / Videos / MP3 segmented tabs
                         Row(
                             modifier =
                                 Modifier.fillMaxWidth()
@@ -511,7 +571,7 @@ fun VideoListPage(
                                 ) {
                                     Text(
                                         text = label,
-                                        fontSize = 13.sp,
+                                        fontSize = 12.sp,
                                         fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
                                         color =
                                             if (active) Color(0xFF111827)
@@ -521,44 +581,46 @@ fun VideoListPage(
                             }
                         }
 
-                        // VidSnap Screen 4: Storage used card
-                        Card(
-                            modifier =
-                                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                            shape = RoundedCornerShape(16.dp),
-                            colors =
-                                CardDefaults.cardColors(
-                                    containerColor =
-                                        if (isDark) Color(0xFF1C1C22) else Color(0xFFF9FAFB)
-                                ),
-                        ) {
-                            Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                ) {
-                                    Text(
-                                        text = "Storage used",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    Text(
-                                        text =
-                                            "${totalDownloadsBytes.toFileSizeText()} / ${deviceTotalBytes.toFileSizeText()}",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface,
+                        if (fullVideoList.isNotEmpty()) {
+                            // Storage used card
+                            Card(
+                                modifier =
+                                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                                shape = RoundedCornerShape(16.dp),
+                                colors =
+                                    CardDefaults.cardColors(
+                                        containerColor =
+                                            if (isDark) Color(0xFF1C1C22) else Color(0xFFF9FAFB)
+                                    ),
+                            ) {
+                                Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        Text(
+                                            text = "Storage used",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                        Text(
+                                            text =
+                                                "${totalDownloadsBytes.toFileSizeText()} / ${deviceTotalBytes.toFileSizeText()}",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                        )
+                                    }
+                                    Spacer(Modifier.height(8.dp))
+                                    LinearProgressIndicator(
+                                        progress = { usageFraction },
+                                        color = Color(0xFFD946EF),
+                                        trackColor =
+                                            if (isDark) Color(0xFF2C2C34) else Color(0xFFE5E7EB),
+                                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape),
                                     )
                                 }
-                                Spacer(Modifier.height(8.dp))
-                                LinearProgressIndicator(
-                                    progress = { usageFraction },
-                                    color = Color(0xFFD946EF),
-                                    trackColor =
-                                        if (isDark) Color(0xFF2C2C34) else Color(0xFFE5E7EB),
-                                    modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape),
-                                )
                             }
                         }
 
@@ -568,6 +630,7 @@ fun VideoListPage(
                     }
                 }
             }
+
             for (info in videoList) {
 
                 item(key = info.id, contentType = { info.videoPath.contains(AUDIO_REGEX) }) {

@@ -65,6 +65,8 @@ fun AboutPage(
     onNavigateBack: () -> Unit,
     onNavigateToCreditsPage: () -> Unit,
     onNavigateToUpdatePage: () -> Unit,
+    onNavigateToChangelogPage: () -> Unit = {},
+    onNavigateToBetaProgram: () -> Unit = {},
 ) {
     val scrollBehavior =
         TopAppBarDefaults.exitUntilCollapsedScrollBehavior(
@@ -118,6 +120,24 @@ fun AboutPage(
                         icon = Icons.Outlined.Description,
                     ) {
                         openUrl(repoUrl)
+                    }
+                }
+                item {
+                    PreferenceItem(
+                        title = "Changelog & 1.3.0 Plan",
+                        description = "View v1.2.0 notes, compare table & upcoming 1.3.0 plan",
+                        icon = Icons.Outlined.NewReleases,
+                    ) {
+                        onNavigateToChangelogPage()
+                    }
+                }
+                item {
+                    PreferenceItem(
+                        title = "Pengu Beta Program",
+                        description = "Open & Closed Beta testing, checksums & release history",
+                        icon = Icons.Outlined.Update,
+                    ) {
+                        onNavigateToBetaProgram()
                     }
                 }
                 item {

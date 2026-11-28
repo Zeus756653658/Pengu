@@ -140,7 +140,9 @@ class DownloadDialogViewModel(private val downloader: DownloaderV2) : ViewModel(
                         }
                     }
                     .onFailure { th ->
-                        mSheetStateFlow.update { SheetState.Error(action = action, throwable = th) }
+                        withContext(Dispatchers.Main) {
+                            mSheetStateFlow.update { SheetState.Error(action = action, throwable = th) }
+                        }
                     }
             }
         mSheetStateFlow.update { SheetState.Loading(taskKey = "FetchPlaylist_$url", job = job) }
@@ -194,6 +196,7 @@ class DownloadDialogViewModel(private val downloader: DownloaderV2) : ViewModel(
                 preferences = preferences,
             )
         downloader.enqueue(task)
+        hideDialog()
     }
 
     private fun hideDialog() {
@@ -205,6 +208,7 @@ class DownloadDialogViewModel(private val downloader: DownloaderV2) : ViewModel(
 
             else -> {}
         }
+        mSheetStateFlow.update { SheetState.InputUrl }
     }
 
     private fun showDialog(action: Action.ShowSheet) {
@@ -221,10 +225,8 @@ class DownloadDialogViewModel(private val downloader: DownloaderV2) : ViewModel(
         return when (val state = sheetState) {
             is SheetState.Loading -> {
                 val res = YoutubeDL.destroyProcessById(id = state.taskKey)
-                if (res) {
-                    state.job.cancel()
-                }
-                return res
+                state.job.cancel()
+                res
             }
             else -> false
         }

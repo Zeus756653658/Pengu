@@ -22,6 +22,10 @@ class NotificationActionReceiver : BroadcastReceiver(), KoinComponent {
 
         const val ACTION_CANCEL_TASK = 0
         const val ACTION_ERROR_REPORT = 1
+        const val ACTION_MEDIA_TOGGLE = 2
+        const val ACTION_MEDIA_STOP = 3
+        const val ACTION_MEDIA_PREV = 4
+        const val ACTION_MEDIA_NEXT = 5
 
         const val ACTION_KEY = PACKAGE_NAME_PREFIX + "action"
         const val TASK_ID_KEY = PACKAGE_NAME_PREFIX + "taskId"
@@ -44,6 +48,22 @@ class NotificationActionReceiver : BroadcastReceiver(), KoinComponent {
             ACTION_ERROR_REPORT -> {
                 val errorReport = intent.getStringExtra(ERROR_REPORT_KEY)
                 if (!errorReport.isNullOrEmpty()) copyErrorReport(errorReport, notificationId)
+            }
+
+            ACTION_MEDIA_TOGGLE -> {
+                com.devrayan.pengu.util.PenguAudioManager.togglePlayPause()
+            }
+
+            ACTION_MEDIA_STOP -> {
+                com.devrayan.pengu.util.PenguAudioManager.stopAndClear()
+            }
+
+            ACTION_MEDIA_PREV -> {
+                com.devrayan.pengu.util.PenguAudioManager.skipToPrevious()
+            }
+
+            ACTION_MEDIA_NEXT -> {
+                com.devrayan.pengu.util.PenguAudioManager.skipToNext()
             }
         }
     }

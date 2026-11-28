@@ -47,7 +47,7 @@ android {
         applicationId = "com.devrayan.pengu"
         minSdk = 24
         targetSdk = 35
-        versionCode = 101_000_400
+        versionCode = 102_000_400
         check(versionCode == currentVersionCode)
 
         versionName = baseVersionName
@@ -150,6 +150,8 @@ android {
     }
     androidResources { generateLocaleConfig = true }
 
+    sourceSets["main"].assets.srcDir(layout.buildDirectory.dir("generated/penguAssets"))
+
     namespace = "com.devrayan.pengu"
 }
 
@@ -189,6 +191,21 @@ dependencies {
     androidTestImplementation(libs.androidx.test.ext)
     androidTestImplementation(libs.androidx.test.espresso.core)
     implementation(libs.androidx.compose.ui.tooling)
+}
+
+tasks.register<Copy>("syncChangelogAssets") {
+    description = "Bundles release/changelog.md and CHANGELOG.md into APK assets for in-app Changelog Viewer"
+    from(rootProject.file("release/changelog.md")) { rename { "release_changelog.md" } }
+    from(rootProject.file("CHANGELOG.md")) { rename { "full_changelog.md" } }
+    into(layout.buildDirectory.dir("generated/penguAssets"))
+}
+
+tasks.matching {
+    it.name == "preBuild" ||
+        (it.name.startsWith("merge") && it.name.endsWith("Assets")) ||
+        (it.name.startsWith("generate") && it.name.endsWith("Assets"))
+}.configureEach {
+    dependsOn("syncChangelogAssets")
 }
 
 tasks.register("exportApks") {

@@ -11,11 +11,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -147,13 +151,17 @@ fun ProgressPage(
 
     val animatedRing by animateFloatAsState(targetValue = avgProgress, label = "ringProgress")
 
+    val topInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
     Scaffold(
-        modifier = Modifier.fillMaxSize().statusBarsPadding(),
+        modifier = Modifier.fillMaxSize(),
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
-    ) { paddingValues ->
+    ) { _ ->
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(top = paddingValues.calculateTopPadding(), bottom = 24.dp),
+            contentPadding = PaddingValues(top = topInset, bottom = 112.dp + bottomInset),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             // Top bar
@@ -171,15 +179,35 @@ fun ProgressPage(
                     )
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = Color(0xFF7C3AED).copy(alpha = 0.14f),
+                        color =
+                            if (runningTasks.isNotEmpty()) Color(0xFF7C3AED).copy(alpha = 0.14f)
+                            else Color(0xFF10B981).copy(alpha = 0.12f),
                     ) {
-                        Text(
-                            text = "${runningTasks.size} active",
-                            color = Color(0xFF7C3AED),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
+                        Row(
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                        )
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                modifier =
+                                    Modifier.size(7.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (runningTasks.isNotEmpty()) Color(0xFF7C3AED)
+                                            else Color(0xFF10B981)
+                                        )
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text =
+                                    if (runningTasks.isNotEmpty()) "Surfing • ${runningTasks.size}"
+                                    else "Idle",
+                                color =
+                                    if (runningTasks.isNotEmpty()) Color(0xFF7C3AED)
+                                    else Color(0xFF10B981),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
                     }
                     Spacer(Modifier.width(8.dp))
                     IconButton(onClick = onNavigateToCustomTasks) {

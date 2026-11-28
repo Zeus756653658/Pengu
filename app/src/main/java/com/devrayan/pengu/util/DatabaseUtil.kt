@@ -68,6 +68,16 @@ object DatabaseUtil {
 
     suspend fun getInfoByPath(path: String): DownloadedVideoInfo? = dao.getInfoByPath(path)
 
+    suspend fun updateInfo(info: DownloadedVideoInfo) = dao.updateInfo(info)
+
+    suspend fun findDownloadedByNormalizedUrl(rawUrl: String): DownloadedVideoInfo? {
+        val target = normalizeMediaUrl(rawUrl)
+        if (target.isBlank()) return null
+        return getDownloadHistory().reversed().firstOrNull { info ->
+            normalizeMediaUrl(info.videoUrl) == target && java.io.File(info.videoPath).exists()
+        }
+    }
+
     suspend fun deleteInfoById(id: Int) = dao.deleteInfoById(id)
 
     suspend fun insertTemplate(commandTemplate: CommandTemplate) =

@@ -2,7 +2,9 @@ package com.devrayan.pengu
 
 import com.devrayan.pengu.util.UpdateUtil.resolvedVersion
 import com.devrayan.pengu.util.UpdateUtil.toVersion
+import com.devrayan.pengu.util.cleanMediaTitle
 import com.devrayan.pengu.util.connectWithDelimiter
+import com.devrayan.pengu.util.normalizeMediaUrl
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -37,6 +39,8 @@ class ExampleUnitTest {
         val stable = "1.0.0".toVersion()
         val next = "1.0.1".toVersion()
         val release110 = "1.1.0".toVersion()
+        val release111 = "1.1.1".toVersion()
+        val release120 = "1.2.0".toVersion()
 
         assertEquals(beta1, beta1Debug)
         assertTrue(beta1 < beta2)
@@ -44,11 +48,27 @@ class ExampleUnitTest {
         assertTrue(rc1 < stable)
         assertTrue(stable < next)
         assertTrue(next < release110)
+        assertTrue(release110 < release111)
+        assertTrue(release111 < release120)
 
         val releaseWithTitleOnly = com.devrayan.pengu.util.UpdateUtil.Release(
             tagName = "v1.0.0-beta.2",
             name = "Pengu Beta 2",
         )
         assertEquals(beta2, releaseWithTitleOnly.resolvedVersion())
+    }
+
+    @Test
+    fun testCleanMediaTitleAndNormalizeUrl() {
+        assertEquals("Sunset Vibes", cleanMediaTitle("Sunset Vibes #reels #trending -"))
+        assertEquals("#onlytags", cleanMediaTitle("#onlytags"))
+        assertEquals(
+            "https://www.instagram.com/reel/abc123",
+            normalizeMediaUrl("https://www.instagram.com/reel/ABC123/?igsh=xyz&utm_source=ig_web"),
+        )
+        assertEquals(
+            "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            normalizeMediaUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ&si=track123&feature=share"),
+        )
     }
 }

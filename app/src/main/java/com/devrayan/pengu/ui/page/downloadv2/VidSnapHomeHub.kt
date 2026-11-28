@@ -25,10 +25,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Audiotrack
-import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Videocam
@@ -50,6 +50,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -68,12 +69,15 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.devrayan.pengu.R
 import com.devrayan.pengu.database.objects.DownloadedVideoInfo
 import com.devrayan.pengu.ui.common.LocalDarkTheme
 import com.devrayan.pengu.util.AUDIO_REGEX
 import com.devrayan.pengu.util.FileUtil.getFileSize
 import com.devrayan.pengu.util.toFileSizeText
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 data class PlatformChip(
     val name: String,
@@ -103,6 +107,7 @@ val SupportedPlatformsList =
 fun VidSnapHomeHub(
     modifier: Modifier = Modifier,
     recentDownloads: List<DownloadedVideoInfo> = emptyList(),
+    activeDownloadCount: Int = 0,
     onDownloadUrl: (String) -> Unit,
     onVideoDownloadClick: () -> Unit,
     onAudioDownloadClick: () -> Unit,
@@ -156,6 +161,10 @@ fun VidSnapHomeHub(
 
     Column(modifier = modifier.fillMaxWidth()) {
         // 1. Top Header Bar
+        val badgeStyle =
+            com.devrayan.pengu.util.PreferenceUtil.run {
+                com.devrayan.pengu.util.PENGU_BADGE_STYLE.getInt()
+            }
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -164,7 +173,13 @@ fun VidSnapHomeHub(
                 modifier =
                     Modifier.size(46.dp)
                         .clip(RoundedCornerShape(14.dp))
-                        .background(if (isDark) Color(0xFF2C2C2E) else Color(0xFFF3F4F6))
+                        .then(
+                            when (badgeStyle) {
+                                1 -> Modifier.background(Brush.linearGradient(listOf(Color(0xFF6366F1), Color(0xFFD946EF))))
+                                2 -> Modifier.background(Color.Transparent)
+                                else -> Modifier.background(if (isDark) Color(0xFF2C2C2E) else Color(0xFFF3F4F6))
+                            }
+                        )
                         .padding(4.dp),
                 contentAlignment = Alignment.Center,
             ) {
@@ -184,12 +199,20 @@ fun VidSnapHomeHub(
                     fontWeight = FontWeight.Medium,
                     color = if (isDark) Color(0xFF8E8E93) else Color(0xFF6B7280),
                 )
-                Text(
-                    text = "Pengu",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = "Pengu",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                    )
+                    com.devrayan.pengu.ui.component.PenguMascotStatusBadge(
+                        activeDownloadCount = activeDownloadCount
+                    )
+                }
             }
 
             IconButton(
@@ -494,7 +517,7 @@ fun VidSnapHomeHub(
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.ContentCut,
+                                imageVector = Icons.Filled.NotificationsActive,
                                 contentDescription = null,
                                 tint = Color(0xFFD946EF),
                                 modifier = Modifier.size(18.dp),
@@ -503,18 +526,97 @@ fun VidSnapHomeHub(
                         Spacer(Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = "MP3 & Trim",
+                                text = "Ringtone Maker",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface,
                             )
                             Text(
-                                text = "FFmpeg tools",
+                                text = "Cut & set tones",
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            // Quick Pengu Music Player Strip
+            val activeMusicState by com.devrayan.pengu.util.PenguAudioManager.state.collectAsStateWithLifecycle()
+            val activeMusic = activeMusicState.mediaInfo
+            val latestAudio =
+                remember(recentDownloads) {
+                    recentDownloads.firstOrNull {
+                        it.videoPath.lowercase().contains(Regex(com.devrayan.pengu.util.AUDIO_REGEX))
+                    }
+                }
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = if (isDark) Color(0xFF1F162A) else Color(0xFFF3E8FF),
+                modifier =
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable {
+                        val targetId = activeMusic?.id ?: latestAudio?.id
+                        if (targetId != null) {
+                            onOpenPlayer(targetId)
+                        } else {
+                            onNavigateToDownloads()
+                            Toast.makeText(
+                                context,
+                                "Pick or download an MP3 track to launch Pengu Music Player",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    },
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier =
+                            Modifier.size(34.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    Brush.linearGradient(
+                                        listOf(Color(0xFFF43F5E), Color(0xFF7C3AED))
+                                    )
+                                ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Audiotrack,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = activeMusic?.videoTitle ?: "Pengu Music Player & Dynamic Island",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                        )
+                        Text(
+                            text =
+                                if (activeMusic != null) "Tap to open Apple Blur / Expressive Player & Lyrics"
+                                else if (latestAudio != null) "Play: ${latestAudio.videoTitle}"
+                                else "Apple Blur • Squiggly Slider • Synced Lyrics • EQ",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        tint = Color(0xFF7C3AED),
+                        modifier = Modifier.size(18.dp),
+                    )
                 }
             }
         }
@@ -604,7 +706,10 @@ fun VidSnapHomeHub(
             ) {
                 recentDownloads.forEach { item ->
                     val isAudio = item.videoPath.lowercase().contains(Regex(AUDIO_REGEX))
-                    val size = remember(item.videoPath) { item.videoPath.getFileSize() }
+                    val size by
+                        produceState(initialValue = 0L, item.videoPath) {
+                            value = withContext(Dispatchers.IO) { item.videoPath.getFileSize() }
+                        }
                     val ext = item.videoPath.substringAfterLast('.', "").uppercase()
                     val badgeGradient =
                         if (isAudio) audioCardGradient else videoCardGradient

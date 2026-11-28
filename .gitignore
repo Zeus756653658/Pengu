@@ -17,3 +17,8 @@
 local.properties
 /keystore.properties
 .kotlin
+music repo/
+SKILLS REPO/
+*.apk
+beta-backend/data/
+beta-backend/uploads/

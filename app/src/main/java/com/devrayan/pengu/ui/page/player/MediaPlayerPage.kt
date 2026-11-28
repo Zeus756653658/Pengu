@@ -1,9 +1,9 @@
 package com.devrayan.pengu.ui.page.player
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
-import android.media.MediaPlayer
-import android.media.PlaybackParams
-import android.os.Build
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.widget.Toast
@@ -14,8 +14,8 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,10 +25,8 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -37,16 +35,22 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -60,9 +64,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.material3.Button
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -85,138 +86,150 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.devrayan.pengu.R
-import com.devrayan.pengu.database.objects.DownloadedVideoInfo
 import com.devrayan.pengu.ui.common.HapticFeedback.slightHapticFeedback
 import com.devrayan.pengu.ui.common.LocalDarkTheme
-import com.devrayan.pengu.util.AUDIO_REGEX
 import com.devrayan.pengu.util.DatabaseUtil
-import com.devrayan.pengu.util.FfmpegToolsUtil
 import com.devrayan.pengu.util.FileUtil
 import com.devrayan.pengu.util.FileUtil.getFileSize
+import com.devrayan.pengu.util.PenguAudioManager
+import com.devrayan.pengu.util.PenguPipState
+import com.devrayan.pengu.util.RingtoneToolsUtil
 import com.devrayan.pengu.util.toFileSizeText
-import java.io.File
 import kotlin.math.abs
 import kotlin.math.sin
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+private tailrec fun Context.findActivity(): Activity? =
+    when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
+
 /**
- * VidSnap Screens 5 & 6 "Now Playing" in-app Video & Audio Player.
+ * Pengu "Now Playing" Video & Background Audio Player with Picture-in-Picture (PiP),
+ * Sleep Timer, A-B Loop, and Ringtone Maker shortcut backed by PenguAudioManager.
  */
 @Composable
 fun MediaPlayerPage(
     mediaId: Int,
     onNavigateBack: () -> Unit,
-    onOpenTools: () -> Unit = {},
+    onOpenTools: (String) -> Unit = {},
 ) {
     val isDark = LocalDarkTheme.current.isDarkTheme()
     val context = LocalContext.current
+    val activity = remember(context) { context.findActivity() }
     val view = LocalView.current
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    var mediaInfo by remember { mutableStateOf<DownloadedVideoInfo?>(null) }
-    var fileNotFound by remember { mutableStateOf(false) }
-
-    var isPlaying by remember { mutableStateOf(false) }
-    var isPrepared by remember { mutableStateOf(false) }
-    var durationMs by remember { mutableIntStateOf(0) }
-    var positionMs by remember { mutableIntStateOf(0) }
-    var videoRatio by remember { mutableFloatStateOf(16f / 9f) }
-    var playbackSpeed by remember { mutableFloatStateOf(1f) }
+    val playback by PenguAudioManager.state.collectAsStateWithLifecycle()
+    val isInPipMode by PenguPipState.isInPipMode.collectAsStateWithLifecycle()
     var showDeleteDialog by remember { mutableStateOf(false) }
-
-    val mediaPlayer = remember { MediaPlayer() }
+    var showSleepMenu by remember { mutableStateOf(false) }
     var surfaceReady by remember { mutableStateOf(false) }
 
-    LaunchedEffect(mediaId) {
-        val loaded = withContext(Dispatchers.IO) { runCatching { DatabaseUtil.getInfoById(mediaId) }.getOrNull() }
-        mediaInfo = loaded
-        if (loaded == null || !File(loaded.videoPath).exists()) {
-            fileNotFound = true
+    LaunchedEffect(mediaId, surfaceReady) {
+        val loaded =
+            withContext(Dispatchers.IO) {
+                runCatching { DatabaseUtil.getInfoById(mediaId) }.getOrNull()
+            }
+        if (loaded != null) {
+            PenguAudioManager.loadAndPlay(loaded)
         }
     }
 
-    val isAudio = remember(mediaInfo) {
-        val path = mediaInfo?.videoPath.orEmpty().lowercase()
-        path.contains(Regex(AUDIO_REGEX))
-    }
-
-    // Prepare audio immediately or video once SurfaceView is ready
-    LaunchedEffect(mediaInfo, isAudio, surfaceReady) {
-        val info = mediaInfo ?: return@LaunchedEffect
-        val file = File(info.videoPath)
-        if (!file.exists()) return@LaunchedEffect
-        if (!isAudio && !surfaceReady) return@LaunchedEffect
-
-        runCatching {
-            mediaPlayer.reset()
-            mediaPlayer.setDataSource(file.absolutePath)
-            mediaPlayer.setOnPreparedListener { mp ->
-                durationMs = mp.duration.coerceAtLeast(1)
-                isPrepared = true
-                mp.start()
-                isPlaying = true
-            }
-            mediaPlayer.setOnVideoSizeChangedListener { _, width, height ->
-                if (width > 0 && height > 0) {
-                    videoRatio = (width.toFloat() / height.toFloat()).coerceIn(0.5f, 2.4f)
-                }
-            }
-            mediaPlayer.setOnCompletionListener {
-                isPlaying = false
-                positionMs = durationMs
-            }
-            mediaPlayer.prepareAsync()
-        }.onFailure {
-            it.printStackTrace()
-            Toast.makeText(context, "Cannot play media", Toast.LENGTH_SHORT).show()
+    LaunchedEffect(playback.errorMessage) {
+        playback.errorMessage?.let { msg ->
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
         }
     }
 
-    LaunchedEffect(isPlaying, isPrepared) {
-        while (isPlaying && isPrepared) {
-            runCatching {
-                if (mediaPlayer.isPlaying) {
-                    positionMs = mediaPlayer.currentPosition
-                }
-            }
-            delay(250)
+    LaunchedEffect(playback.isAudioOnly, playback.isPlaying, playback.videoRatio, playback.fileNotFound) {
+        val videoActive = !playback.isAudioOnly && !playback.fileNotFound && playback.mediaInfo != null
+        PenguPipState.updateVideoSession(
+            visible = videoActive,
+            playing = playback.isPlaying,
+            ratio = playback.videoRatio,
+        )
+        activity?.let { act ->
+            PenguPipState.syncAutoEnterParams(
+                activity = act,
+                enableAutoEnter = videoActive && playback.isPlaying,
+                ratio = playback.videoRatio,
+            )
         }
     }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_PAUSE) {
-                runCatching {
-                    if (mediaPlayer.isPlaying) {
-                        mediaPlayer.pause()
-                        isPlaying = false
-                    }
-                }
+            if (event == Lifecycle.Event.ON_STOP && !PenguPipState.isInPipMode.value && !playback.isAudioOnly) {
+                PenguAudioManager.pauseIfVideoLeaving()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            runCatching {
-                mediaPlayer.stop()
-                mediaPlayer.release()
-            }
+            PenguPipState.updateVideoSession(visible = false, playing = false, ratio = 16f / 9f)
+            activity?.let { PenguPipState.syncAutoEnterParams(it, enableAutoEnter = false) }
+            PenguAudioManager.pauseIfVideoLeaving()
         }
     }
 
-    val info = mediaInfo
-    val fileSize = remember(info) { info?.videoPath?.getFileSize() ?: 0L }
-    val ext = remember(info) { info?.videoPath?.substringAfterLast('.', "")?.uppercase().orEmpty() }
+    val info = playback.mediaInfo
+    val isAudio = playback.isAudioOnly
+    val fileSize = remember(info?.videoPath) { info?.videoPath?.getFileSize() ?: 0L }
+    val ext = remember(info?.videoPath) { info?.videoPath?.substringAfterLast('.', "")?.uppercase().orEmpty() }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding(),
-        containerColor = MaterialTheme.colorScheme.background,
-    ) { paddingValues ->
+    if (isInPipMode && !isAudio && !playback.fileNotFound && info != null) {
+        Box(
+            modifier = Modifier.fillMaxSize().background(Color.Black),
+            contentAlignment = Alignment.Center,
+        ) {
+            AndroidView(
+                modifier = Modifier.fillMaxWidth().aspectRatio(playback.videoRatio),
+                factory = { ctx ->
+                    SurfaceView(ctx).apply {
+                        holder.addCallback(
+                            object : SurfaceHolder.Callback {
+                                override fun surfaceCreated(holder: SurfaceHolder) {
+                                    PenguAudioManager.attachVideoSurface(holder)
+                                    surfaceReady = true
+                                }
+
+                                override fun surfaceChanged(
+                                    holder: SurfaceHolder,
+                                    format: Int,
+                                    width: Int,
+                                    height: Int,
+                                ) {}
+
+                                override fun surfaceDestroyed(holder: SurfaceHolder) {
+                                    surfaceReady = false
+                                    PenguAudioManager.detachVideoSurface(holder)
+                                }
+                            }
+                        )
+                    }
+                },
+            )
+        }
+    } else if (isAudio && !playback.fileNotFound && info != null) {
+        PenguMusicPlayerView(
+            playback = playback,
+            onNavigateBack = onNavigateBack,
+            onOpenTools = onOpenTools,
+            onRequestDelete = { showDeleteDialog = true },
+        )
+    } else {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = MaterialTheme.colorScheme.background,
+        ) { paddingValues ->
         Column(
             modifier =
                 Modifier.fillMaxSize()
@@ -247,20 +260,35 @@ fun MediaPlayerPage(
                     color = MaterialTheme.colorScheme.onBackground,
                 )
 
-                IconButton(
-                    onClick = {
-                        info?.let {
-                            FileUtil.openFile(it.videoPath) {
-                                Toast.makeText(context, R.string.file_unavailable, Toast.LENGTH_SHORT).show()
+                Row {
+                    if (!isAudio && !playback.fileNotFound && PenguPipState.isPipSupported(context)) {
+                        IconButton(
+                            onClick = {
+                                view.slightHapticFeedback()
+                                activity?.let { PenguPipState.enterPipMode(it, playback.videoRatio) }
                             }
+                        ) {
+                            Icon(
+                                Icons.Filled.PictureInPictureAlt,
+                                contentDescription = "Picture-in-picture",
+                            )
                         }
                     }
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Open externally")
+                    IconButton(
+                        onClick = {
+                            info?.let {
+                                FileUtil.openFile(it.videoPath) {
+                                    Toast.makeText(context, R.string.file_unavailable, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = "Open externally")
+                    }
                 }
             }
 
-            // Status green pill (VidSnap Screens 5 & 6)
+            // Status green pill
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = Color(0xFF10B981).copy(alpha = 0.14f),
@@ -279,7 +307,7 @@ fun MediaPlayerPage(
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text =
-                            if (isAudio) "$ext saved • Ready in Downloads"
+                            if (isAudio) "$ext saved • Background audio enabled"
                             else "Download complete • Saved to Downloads",
                         color = Color(0xFF10B981),
                         fontSize = 12.sp,
@@ -288,9 +316,9 @@ fun MediaPlayerPage(
                 }
             }
 
-            Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(18.dp))
 
-            if (fileNotFound) {
+            if (playback.fileNotFound) {
                 Surface(
                     shape = RoundedCornerShape(22.dp),
                     color = MaterialTheme.colorScheme.errorContainer,
@@ -304,11 +332,10 @@ fun MediaPlayerPage(
                     )
                 }
             } else if (!isAudio) {
-                // Video Surface Player
                 Box(
                     modifier =
                         Modifier.fillMaxWidth()
-                            .aspectRatio(videoRatio)
+                            .aspectRatio(playback.videoRatio)
                             .clip(RoundedCornerShape(22.dp))
                             .background(Color.Black),
                     contentAlignment = Alignment.Center,
@@ -320,7 +347,7 @@ fun MediaPlayerPage(
                                 holder.addCallback(
                                     object : SurfaceHolder.Callback {
                                         override fun surfaceCreated(holder: SurfaceHolder) {
-                                            mediaPlayer.setDisplay(holder)
+                                            PenguAudioManager.attachVideoSurface(holder)
                                             surfaceReady = true
                                         }
 
@@ -333,7 +360,7 @@ fun MediaPlayerPage(
 
                                         override fun surfaceDestroyed(holder: SurfaceHolder) {
                                             surfaceReady = false
-                                            runCatching { mediaPlayer.setDisplay(null) }
+                                            PenguAudioManager.detachVideoSurface(holder)
                                         }
                                     }
                                 )
@@ -342,12 +369,11 @@ fun MediaPlayerPage(
                     )
                 }
             } else {
-                // VidSnap Screen 6 MP3 Gradient Artwork Card + Animated Waveform
                 val artGradient =
                     Brush.linearGradient(listOf(Color(0xFF6366F1), Color(0xFFD946EF)))
                 Box(
                     modifier =
-                        Modifier.size(196.dp)
+                        Modifier.size(190.dp)
                             .shadow(16.dp, RoundedCornerShape(32.dp), spotColor = Color(0xFF7C3AED))
                             .clip(RoundedCornerShape(32.dp))
                             .background(artGradient),
@@ -357,18 +383,17 @@ fun MediaPlayerPage(
                         imageVector = Icons.Filled.MusicNote,
                         contentDescription = null,
                         tint = Color.White,
-                        modifier = Modifier.size(86.dp),
+                        modifier = Modifier.size(84.dp),
                     )
                 }
 
-                Spacer(Modifier.height(22.dp))
+                Spacer(Modifier.height(20.dp))
 
-                AnimatedAudioWaveform(isPlaying = isPlaying)
+                AnimatedAudioWaveform(isPlaying = playback.isPlaying)
             }
 
-            Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(18.dp))
 
-            // Title & Badges
             Text(
                 text = info?.videoTitle ?: "Loading...",
                 fontSize = 18.sp,
@@ -415,18 +440,12 @@ fun MediaPlayerPage(
                 )
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(14.dp))
 
-            // Seekbar + time labels
-            val safeDuration = durationMs.coerceAtLeast(1)
+            val safeDuration = playback.durationMs.coerceAtLeast(1)
             Slider(
-                value = positionMs.coerceIn(0, safeDuration).toFloat(),
-                onValueChange = { newPos ->
-                    positionMs = newPos.toInt()
-                    if (isPrepared) {
-                        runCatching { mediaPlayer.seekTo(positionMs) }
-                    }
-                },
+                value = playback.positionMs.coerceIn(0, safeDuration).toFloat(),
+                onValueChange = { newPos -> PenguAudioManager.seekTo(newPos.toInt()) },
                 valueRange = 0f..safeDuration.toFloat(),
                 colors =
                     SliderDefaults.colors(
@@ -441,45 +460,36 @@ fun MediaPlayerPage(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    text = FfmpegToolsUtil.formatClock((positionMs / 1000L).coerceAtLeast(0L)),
+                    text = RingtoneToolsUtil.formatClock((playback.positionMs / 1000L).coerceAtLeast(0L)),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    text = FfmpegToolsUtil.formatClock((durationMs / 1000L).coerceAtLeast(0L)),
+                    text = RingtoneToolsUtil.formatClock((playback.durationMs / 1000L).coerceAtLeast(0L)),
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
 
-            // Playback controls: -10s, Play/Pause, +10s, Speed toggle
+            // Transport controls: Speed, -10s, Play/Pause, +10s, Sleep Timer
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // Speed toggle
                 Surface(
                     shape = RoundedCornerShape(10.dp),
                     color = if (isDark) Color(0xFF1E1E24) else Color(0xFFF3F4F6),
                     modifier =
                         Modifier.clickable {
                             view.slightHapticFeedback()
-                            val speeds = listOf(1.0f, 1.25f, 1.5f, 2.0f)
-                            val nextIdx = (speeds.indexOf(playbackSpeed) + 1) % speeds.size
-                            playbackSpeed = speeds[nextIdx]
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && isPrepared) {
-                                runCatching {
-                                    mediaPlayer.playbackParams =
-                                        PlaybackParams().setSpeed(playbackSpeed)
-                                }
-                            }
+                            PenguAudioManager.cycleSpeed()
                         },
                 ) {
                     Text(
-                        text = "${playbackSpeed}x",
+                        text = "${playback.playbackSpeed}x",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF7C3AED),
@@ -490,11 +500,7 @@ fun MediaPlayerPage(
                 IconButton(
                     onClick = {
                         view.slightHapticFeedback()
-                        if (isPrepared) {
-                            val target = (mediaPlayer.currentPosition - 10_000).coerceAtLeast(0)
-                            mediaPlayer.seekTo(target)
-                            positionMs = target
-                        }
+                        PenguAudioManager.skipBy(-10_000)
                     }
                 ) {
                     Icon(Icons.Filled.Replay10, contentDescription = "Rewind 10s", modifier = Modifier.size(30.dp))
@@ -512,22 +518,13 @@ fun MediaPlayerPage(
                             .background(btnGradient)
                             .clickable {
                                 view.slightHapticFeedback()
-                                if (!isPrepared) return@clickable
-                                runCatching {
-                                    if (mediaPlayer.isPlaying) {
-                                        mediaPlayer.pause()
-                                        isPlaying = false
-                                    } else {
-                                        mediaPlayer.start()
-                                        isPlaying = true
-                                    }
-                                }
+                                PenguAudioManager.togglePlayPause()
                             },
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
+                        imageVector = if (playback.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        contentDescription = if (playback.isPlaying) "Pause" else "Play",
                         tint = Color.White,
                         modifier = Modifier.size(32.dp),
                     )
@@ -536,29 +533,115 @@ fun MediaPlayerPage(
                 IconButton(
                     onClick = {
                         view.slightHapticFeedback()
-                        if (isPrepared) {
-                            val target = (mediaPlayer.currentPosition + 10_000).coerceAtMost(safeDuration)
-                            mediaPlayer.seekTo(target)
-                            positionMs = target
-                        }
+                        PenguAudioManager.skipBy(10_000)
                     }
                 ) {
                     Icon(Icons.Filled.Forward10, contentDescription = "Forward 10s", modifier = Modifier.size(30.dp))
                 }
 
-                // Spacer balance for speed pill
-                Spacer(Modifier.width(42.dp))
+                // Sleep timer pill
+                Box {
+                    val timerActive = playback.sleepRemainingMs > 0L
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color =
+                            if (timerActive) Color(0xFF7C3AED).copy(alpha = 0.16f)
+                            else if (isDark) Color(0xFF1E1E24) else Color(0xFFF3F4F6),
+                        modifier = Modifier.clickable { showSleepMenu = true },
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Bedtime,
+                                contentDescription = "Sleep Timer",
+                                tint = if (timerActive) Color(0xFF7C3AED) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            if (timerActive) {
+                                Spacer(Modifier.width(4.dp))
+                                val m = (playback.sleepRemainingMs / 60_000L) + 1
+                                Text(
+                                    text = "${m}m",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF7C3AED),
+                                )
+                            }
+                        }
+                    }
+                    DropdownMenu(
+                        expanded = showSleepMenu,
+                        onDismissRequest = { showSleepMenu = false },
+                    ) {
+                        listOf(0 to "Off", 15 to "15 min", 30 to "30 min", 45 to "45 min", 60 to "60 min").forEach { (mins, label) ->
+                            DropdownMenuItem(
+                                text = { Text("Sleep Timer: $label") },
+                                onClick = {
+                                    showSleepMenu = false
+                                    PenguAudioManager.setSleepTimer(mins)
+                                    val toastMsg = if (mins > 0) "Sleep timer set for $mins min" else "Sleep timer turned off"
+                                    Toast.makeText(context, toastMsg, Toast.LENGTH_SHORT).show()
+                                },
+                            )
+                        }
+                    }
+                }
             }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(12.dp))
 
-            // Bottom quick action bar: Share, Tools, Delete
+            // A-B Loop pill
+            val abLabel =
+                when {
+                    playback.abLoopStartMs != null && playback.abLoopEndMs != null ->
+                        "A-B Loop: ${RingtoneToolsUtil.formatClock(playback.abLoopStartMs!! / 1000L)} - ${RingtoneToolsUtil.formatClock(playback.abLoopEndMs!! / 1000L)} (Tap to clear)"
+                    playback.abLoopStartMs != null ->
+                        "Point A set (${RingtoneToolsUtil.formatClock(playback.abLoopStartMs!! / 1000L)}) • Tap to set Point B"
+                    else -> "Tap to set A-B Loop"
+                }
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color =
+                    if (playback.abLoopStartMs != null) Color(0xFF7C3AED).copy(alpha = 0.14f)
+                    else if (isDark) Color(0xFF1C1C22) else Color(0xFFF3F4F6),
+                modifier =
+                    Modifier.clip(RoundedCornerShape(12.dp)).clickable {
+                        view.slightHapticFeedback()
+                        PenguAudioManager.setAbLoopPoint()
+                    },
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Repeat,
+                        contentDescription = null,
+                        tint = if (playback.abLoopStartMs != null) Color(0xFF7C3AED) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = abLabel,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (playback.abLoopStartMs != null) Color(0xFF7C3AED) else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(18.dp))
+
+            // Bottom quick action bar: Share, Ringtone Maker, Delete
             Row(
                 modifier =
                     Modifier.fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
                         .clip(RoundedCornerShape(18.dp))
                         .background(if (isDark) Color(0xFF1C1C22) else Color(0xFFF3F4F6))
-                        .padding(vertical = 12.dp),
+                        .padding(vertical = 10.dp, horizontal = 6.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
                 PlayerActionTile(icon = Icons.Filled.Share, label = "Share") {
@@ -570,14 +653,9 @@ fun MediaPlayerPage(
                         }
                     }
                 }
-                PlayerActionTile(icon = Icons.Filled.ContentCut, label = "Trim / MP3") {
-                    runCatching {
-                        if (mediaPlayer.isPlaying) {
-                            mediaPlayer.pause()
-                            isPlaying = false
-                        }
-                    }
-                    onOpenTools()
+                PlayerActionTile(icon = Icons.Filled.NotificationsActive, label = "Ringtone") {
+                    PenguAudioManager.pauseIfVideoLeaving()
+                    onOpenTools(info?.videoPath.orEmpty())
                 }
                 PlayerActionTile(
                     icon = Icons.Filled.Delete,
@@ -591,6 +669,7 @@ fun MediaPlayerPage(
             Spacer(Modifier.height(20.dp))
         }
     }
+    }
 
     if (showDeleteDialog && info != null) {
         AlertDialog(
@@ -601,6 +680,7 @@ fun MediaPlayerPage(
                 Button(
                     onClick = {
                         showDeleteDialog = false
+                        PenguAudioManager.stopAndClear()
                         scope.launch(Dispatchers.IO) {
                             DatabaseUtil.deleteInfoList(listOf(info), deleteFile = true)
                             withContext(Dispatchers.Main) { onNavigateBack() }
@@ -660,11 +740,11 @@ private fun PlayerActionTile(
     onClick: () -> Unit,
 ) {
     Column(
-        modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(horizontal = 18.dp, vertical = 6.dp),
+        modifier = Modifier.clip(RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Icon(imageVector = icon, contentDescription = label, tint = tint, modifier = Modifier.size(22.dp))
         Spacer(Modifier.height(4.dp))
-        Text(text = label, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = tint)
+        Text(text = label, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = tint)
     }
 }

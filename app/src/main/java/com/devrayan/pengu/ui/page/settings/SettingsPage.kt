@@ -13,7 +13,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AudioFile
@@ -21,18 +26,20 @@ import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.EnergySavingsLeaf
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.NewReleases
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.SettingsApplications
 import androidx.compose.material.icons.rounded.SignalCellular4Bar
 import androidx.compose.material.icons.rounded.SignalWifi4Bar
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.VideoFile
 import androidx.compose.material.icons.rounded.ViewComfy
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -43,7 +50,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.devrayan.pengu.App
 import com.devrayan.pengu.R
 import com.devrayan.pengu.ui.common.Route
@@ -96,27 +105,43 @@ fun SettingsPage(onNavigateBack: () -> Unit, onNavigateTo: (String) -> Unit) {
                 showBatteryHint = !pm.isIgnoringBatteryOptimizations(context.packageName)
             }
         }
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-
-    val typography = MaterialTheme.typography
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    val navBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     Scaffold(
         modifier = Modifier.fillMaxSize().nestedScroll(scrollBehavior.nestedScrollConnection),
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            val overrideTypography =
-                remember(typography) { typography.copy(headlineMedium = typography.displaySmall) }
-
-            MaterialTheme(typography = overrideTypography) {
-                LargeTopAppBar(
-                    title = { Text(text = stringResource(id = R.string.settings)) },
-                    navigationIcon = { BackButton(onNavigateBack) },
-                    scrollBehavior = scrollBehavior,
-                    expandedHeight = TopAppBarDefaults.LargeAppBarExpandedHeight + 24.dp,
-                )
-            }
+            TopAppBar(
+                title = {
+                    Text(
+                        text = stringResource(id = R.string.settings),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 22.sp,
+                    )
+                },
+                navigationIcon = { BackButton(onNavigateBack) },
+                colors =
+                    TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        scrolledContainerColor = MaterialTheme.colorScheme.background,
+                    ),
+                windowInsets = WindowInsets.statusBars,
+                scrollBehavior = scrollBehavior,
+            )
         },
     ) {
-        LazyColumn(modifier = Modifier, contentPadding = it) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(top = it.calculateTopPadding(), bottom = 112.dp + navBottomInset),
+        ) {
+            item {
+                com.devrayan.pengu.ui.component.PenguActivityStatsCard()
+            }
+            item {
+                com.devrayan.pengu.ui.component.DynamicIslandSettingEntry()
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 item {
                     AnimatedVisibility(
@@ -205,11 +230,38 @@ fun SettingsPage(onNavigateBack: () -> Unit, onNavigateTo: (String) -> Unit) {
             }
             item {
                 SettingItem(
+                    title = "Pengu Beta Program",
+                    description = "Early access builds, Open & Closed Beta & verified APKs",
+                    icon = Icons.Rounded.NewReleases,
+                ) {
+                    onNavigateTo(Route.BETA_PROGRAM)
+                }
+            }
+            item {
+                SettingItem(
                     title = stringResource(R.string.trouble_shooting),
                     description = stringResource(R.string.trouble_shooting_desc),
                     icon = Icons.Rounded.BugReport,
                 ) {
                     onNavigateTo(Route.TROUBLESHOOTING)
+                }
+            }
+            item {
+                SettingItem(
+                    title = "Star Pengu on GitHub",
+                    description = "Show support & star the repository directly on GitHub",
+                    icon = Icons.Rounded.Star,
+                ) {
+                    com.devrayan.pengu.ui.component.PenguRateManager.openGitHubForStar(context)
+                }
+            }
+            item {
+                SettingItem(
+                    title = "Changelog & 1.3.0 Plan",
+                    description = "View v1.2.0 notes, fixes, compare & upcoming 1.3.0 roadmap",
+                    icon = Icons.Rounded.NewReleases,
+                ) {
+                    onNavigateTo(Route.CHANGELOG)
                 }
             }
             item {

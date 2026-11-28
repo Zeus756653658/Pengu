@@ -65,10 +65,12 @@ class App : Application() {
             modules(
                 module {
                     single<DownloaderV2> { DownloaderV2Impl(androidContext()) }
+                    single { com.devrayan.pengu.beta.BetaRepository(androidContext()) }
                     viewModel { DownloadDialogViewModel(downloader = get()) }
                     viewModel { HomePageViewModel() }
                     viewModel { CookiesViewModel() }
                     viewModel { VideoListViewModel() }
+                    viewModel { com.devrayan.pengu.beta.BetaProgramViewModel(get(), androidContext()) }
                 }
             )
         }
@@ -131,7 +133,7 @@ class App : Application() {
         lateinit var connectivityManager: ConnectivityManager
         lateinit var packageInfo: PackageInfo
 
-        var isServiceRunning = false
+        @Volatile var isServiceRunning = false
 
         private val connection =
             object : ServiceConnection {

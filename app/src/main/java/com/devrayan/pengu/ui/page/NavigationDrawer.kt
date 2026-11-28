@@ -29,10 +29,12 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Subscriptions
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.rounded.BugReport
-import androidx.compose.material.icons.rounded.ContentCut
 import androidx.compose.material.icons.rounded.Cookie
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.NewReleases
+import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.SettingsApplications
 import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DrawerValue
@@ -208,6 +210,16 @@ fun NavigationDrawerSheetContent(
                 selected = currentRoute == Route.DOWNLOADS,
             )
             NavigationDrawerItem(
+                label = { Text("Music Player") },
+                icon = { Icon(Icons.Rounded.MusicNote, null) },
+                onClick = {
+                    scope
+                        .launch { onDismissRequest() }
+                        .invokeOnCompletion { onNavigateToRoute(Route.MUSIC) }
+                },
+                selected = currentRoute == Route.MUSIC,
+            )
+            NavigationDrawerItem(
                 label = { Text("Browser Downloader") },
                 icon = { Icon(Icons.Outlined.Public, null) },
                 onClick = {
@@ -218,8 +230,8 @@ fun NavigationDrawerSheetContent(
                 selected = currentRoute?.startsWith(Route.BROWSER) == true,
             )
             NavigationDrawerItem(
-                label = { Text("MP3 & Trim Tools") },
-                icon = { Icon(Icons.Rounded.ContentCut, null) },
+                label = { Text("Ringtone Maker") },
+                icon = { Icon(Icons.Rounded.NotificationsActive, null) },
                 onClick = {
                     scope
                         .launch { onDismissRequest() }
@@ -307,6 +319,17 @@ fun NavigationDrawerSheetContent(
                             .invokeOnCompletion { onNavigateToRoute(Route.TROUBLESHOOTING) }
                     },
                     selected = currentRoute == Route.TROUBLESHOOTING,
+                )
+
+                NavigationDrawerItem(
+                    label = { Text("Changelog & 1.3.0 Plan") },
+                    icon = { Icon(Icons.Rounded.NewReleases, null) },
+                    onClick = {
+                        scope
+                            .launch { onDismissRequest() }
+                            .invokeOnCompletion { onNavigateToRoute(Route.CHANGELOG) }
+                    },
+                    selected = currentRoute == Route.CHANGELOG,
                 )
 
                 NavigationDrawerItem(

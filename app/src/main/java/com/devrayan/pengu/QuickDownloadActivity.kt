@@ -20,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.devrayan.pengu.ui.common.LocalDarkTheme
 import com.devrayan.pengu.ui.common.SettingsProvider
+import com.devrayan.pengu.ui.page.downloadv2.VidSnapQuickSheet
 import com.devrayan.pengu.ui.page.downloadv2.configure.Config
 import com.devrayan.pengu.ui.page.downloadv2.configure.DownloadDialog
 import com.devrayan.pengu.ui.page.downloadv2.configure.DownloadDialogViewModel
@@ -38,6 +39,9 @@ import org.koin.androidx.viewmodel.ext.android.getViewModel
 
 private const val TAG = "QuickDownloadActivity"
 
+/**
+ * Apple/VidSnap-style overlay activity for Share -> Pengu links without leaving the source app.
+ */
 class QuickDownloadActivity : ComponentActivity() {
     private var sharedUrlCached: String = ""
 
@@ -69,6 +73,7 @@ class QuickDownloadActivity : ComponentActivity() {
 
         if (sharedUrlCached.isEmpty()) {
             finish()
+            return
         }
 
         App.startService()
@@ -93,7 +98,6 @@ class QuickDownloadActivity : ComponentActivity() {
         }
 
         val viewModel: DownloadDialogViewModel = getViewModel()
-        viewModel.postAction(Action.ShowSheet(listOf(sharedUrlCached)))
 
         setContent {
             SettingsProvider(calculateWindowSizeClass(this).widthSizeClass) {
@@ -105,12 +109,11 @@ class QuickDownloadActivity : ComponentActivity() {
                         mutableStateOf(DownloadUtil.DownloadPreferences.createFromPreferences())
                     }
 
+                    var showQuickShareSheet by remember { mutableStateOf(true) }
+
                     val sheetValue = viewModel.sheetValueFlow.collectAsStateWithLifecycle().value
-
                     val state = viewModel.sheetStateFlow.collectAsStateWithLifecycle().value
-
                     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
                     val selectionState =
                         viewModel.selectionStateFlow.collectAsStateWithLifecycle().value
 
@@ -119,15 +122,54 @@ class QuickDownloadActivity : ComponentActivity() {
                     LaunchedEffect(sheetValue, selectionState) {
                         if (sheetValue == DownloadDialogViewModel.SheetValue.Expanded) {
                             showDialog = true
-                        } else if (sheetValue == DownloadDialogViewModel.SheetValue.Hidden) {
+                        } else if (sheetValue == DownloadDialogViewModel.SheetValue.Hidden && showDialog) {
                             launch { sheetState.hide() }
                                 .invokeOnCompletion {
                                     showDialog = false
-                                    if (selectionState == SelectionState.Idle) {
+                                    if (selectionState == SelectionState.Idle && !showQuickShareSheet) {
                                         this@QuickDownloadActivity.finish()
                                     }
                                 }
                         }
+                    }
+
+                    if (showQuickShareSheet) {
+                        VidSnapQuickSheet(
+                            initialAudioMode = preferences.extractAudio,
+                            initialUrl = sharedUrlCached,
+                            onDismiss = {
+                                showQuickShareSheet = false
+                                if (
+                                    !showDialog &&
+                                        sheetValue == DownloadDialogViewModel.SheetValue.Hidden &&
+                                        selectionState == SelectionState.Idle
+                                ) {
+                                    this@QuickDownloadActivity.finish()
+                                }
+                            },
+                            onStartPresetDownload = { url, presetPrefs ->
+                                preferences = presetPrefs
+                                showQuickShareSheet = false
+                                viewModel.postAction(
+                                    Action.DownloadWithPreset(listOf(url), presetPrefs)
+                                )
+                                this@QuickDownloadActivity.finish()
+                            },
+                            onOpenFullOptions = { url ->
+                                val target = url.ifBlank { sharedUrlCached }
+                                viewModel.postAction(Action.ShowSheet(listOf(target)))
+                                showQuickShareSheet = false
+                            },
+                            onOpenBrowserForSite = { siteUrl ->
+                                startActivity(
+                                    Intent(this@QuickDownloadActivity, MainActivity::class.java).apply {
+                                        action = Intent.ACTION_VIEW
+                                        data = android.net.Uri.parse(siteUrl)
+                                    }
+                                )
+                                this@QuickDownloadActivity.finish()
+                            },
+                        )
                     }
 
                     if (showDialog) {

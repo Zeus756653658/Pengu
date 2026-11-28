@@ -4,6 +4,7 @@ object Route {
 
     const val HOME = "home"
     const val DOWNLOADS = "download_history"
+    const val MUSIC = "music"
     const val PLAYLIST = "playlist"
     const val SETTINGS = "settings"
     const val FORMAT_SELECTION = "format"
@@ -16,6 +17,7 @@ object Route {
     const val INTERACTION = "interaction"
     const val GENERAL_DOWNLOAD_PREFERENCES = "general_download_preferences"
     const val ABOUT = "about"
+    const val CHANGELOG = "changelog"
     const val DOWNLOAD_DIRECTORY = "download_directory"
     const val CREDITS = "credits"
     const val LANGUAGES = "languages"
@@ -30,6 +32,10 @@ object Route {
     const val SUBTITLE_PREFERENCES = "subtitle_preferences"
     const val AUTO_UPDATE = "auto_update"
     const val TROUBLESHOOTING = "troubleshooting"
+    const val BETA_PROGRAM = "beta_program"
+    const val BETA_MY_PROGRAM = "beta_my_program"
+    const val BETA_RELEASE_DETAIL = "beta_release_detail"
+    const val BETA_HISTORY = "beta_history"
     const val PLAYER = "player"
     const val BROWSER = "browser"
     const val TOOLS = "tools"
@@ -38,6 +44,8 @@ object Route {
     const val TEMPLATE_ID = "template_id"
     const val MEDIA_ID = "media_id"
     const val BROWSER_URL = "browser_url"
+    const val TOOLS_TAB = "tools_tab"
+    const val TOOLS_PATH = "tools_path"
 }
 
 infix fun String.arg(arg: String) = "$this/{$arg}"

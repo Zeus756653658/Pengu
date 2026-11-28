@@ -2,7 +2,7 @@
 
 ### Modern Video & Audio Downloader for Android
 
-**Version:** `1.1.0`  
+**Version:** `1.2.0`  
 **Repository:** [github.com/Zeus756653658/Pengu](https://github.com/Zeus756653658/Pengu)  
 **Publisher / Developer:** **Dev Rayan**  
 **License:** [GNU General Public License v3.0](LICENSE) (Open Source)
@@ -14,37 +14,37 @@
 
 ## 📱 About Pengu
 
-**Pengu** is a fast, beautiful, and feature-rich Android media downloader built from the ground up using **Kotlin** and **Jetpack Compose (Material Design 3)**. Powered by `yt-dlp` and `FFmpeg`, Pengu allows users to easily download video and audio from thousands of supported websites with full quality customization.
+**Pengu** is a fast, clean, and modern open-source Android media downloader and audio player built with **Kotlin** and **Jetpack Compose (Material Design 3)**. Powered by `yt-dlp`, `FFmpeg`, and `aria2c`, Pengu lets you download high-resolution videos and audio from thousands of platforms, listen in a flagship music player, and opt into early-access builds safely via the **Pengu Beta Testing Program**.
 
 ---
 
 ## ✨ Features
 
 - **Multi-Platform Support**: Download videos and audio from YouTube, Instagram, Twitter/X, TikTok, Reddit, Facebook, Vimeo, and over 1,000+ sites supported by [yt-dlp](https://github.com/yt-dlp/yt-dlp).
-- **High Resolution Downloads**: Supports up to 4K, 1080p, 720p, and 60fps video downloads.
-- **Audio Extraction**: Extract audio into MP3, M4A, FLAC, OPUS, OGG, or WAV formats.
-- **Built-in "Now Playing" Player**: Watch downloaded videos and listen to MP3 tracks with an animated audio waveform, playback speed control, seekbar, sharing, and quick trim/convert access.
-- **In-App Browser Downloader**: Browse YouTube, Instagram, TikTok, Facebook, X, and SoundCloud directly inside Pengu with automatic WebView login cookie sync and one-tap Page Download.
-- **Offline FFmpeg Media Tools**: Convert local videos to MP3 (128k / 192k / 320k) or trim videos and audio clips completely offline without internet access.
-- **Smart Clipboard Auto-Detect & Live Progress**: Floating one-tap banner detects copied media links on app focus, paired with a live download progress queue, storage bar, and Recent Downloads hub.
-- **Metadata & Artwork Embedding**: Automatically embed artist names, album info, subtitles, and high-quality cover art/thumbnails into audio and video files.
-- **Fast Multi-Threaded Downloads**: Built-in [aria2c](https://github.com/aria2/aria2) external downloader for maximum download speeds.
-- **Playlist & Batch Downloading**: Download entire playlists or batches with a single tap.
-- **Custom yt-dlp Command Templates**: Advanced users can create and execute custom yt-dlp command templates with customizable arguments.
-- **Material You Dynamic Theming**: Clean, modern Material Design 3 interface that dynamically adapts to your device's wallpaper and theme colors.
-- **Battery & Privacy Friendly**: 100% open-source, no trackers, no ads, no telemetry.
+- **High Resolution Downloads & Audio Extraction**: Supports up to 4K, 1080p, 720p, and 60fps video plus crisp MP3, M4A, FLAC, OPUS, OGG, and WAV audio.
+- **Pengu Beta Testing Program (Open & Closed Beta)**:
+  - **Open Beta & Closed Beta Enrollment**: Join Open Beta instantly or request Closed Beta access via invite code inside **Settings -> Pengu Beta Program**.
+  - **Strict Release Channels (`Stable`, `Beta`, `Archived`)**: Dedicated channel switching (`Stable` vs `Beta`) that never switches your channel automatically.
+  - **Verified HTTPS APK Distribution**: HTTPS-only APK downloads with automatic **SHA-256 checksum** and **APK signing certificate verification** before prompting Android's explicit package installer confirmation.
+  - **Release Details, Known Bugs & History**: Inspect WhatsApp/Instagram-style Beta release details, experimental features, known bugs, full **Beta / Stable / Archived** history, and your **My Testing Program** pass.
+- **Ringtone Maker**: Cut clips from any song or video with waveform preview & Fade-In/Out smoothing, then **Save**, **Set Ringtone**, **Set Contact Ringtone**, **Set Alarm Sound**, or **Set Notification** directly.
+- **Pengu Music Tab, PiP Video & System Dynamic Island**: Enjoy downloaded music in **Apple Blur** or **Material You Expressive** style with **Squiggly Wave** & **Apple Slim** sliders, **LRCLIB Synchronized Lyrics**, **Hardware Equalizer + Bass Boost**, auto-queued `Prev`/`Next`/`Shuffle`/`Repeat`, **Native Picture-in-Picture (PiP)** video playback, **5-Tab Floating Pill Bottom Bar**, real `MediaSession` + `MediaStyle` lockscreen/control-center & **System Dynamic Island** support, Android 16 **Promoted Live Updates**, and **GitHub `.md` Preview Changelog Viewer**.
+- **Apple-Style Quick Share Overlay & Duplicate Alert**: Share links straight into a streamlined Quick Quality Sheet with automatic normalized duplicate-link detection (**Play Now** / **Download Again**) and auto-clean titles.
+- **In-App Browser Downloader & Theme Presets**: Built-in WebView with automatic cookie sync, Settings **Activity Hub** metrics, one-tap **Curated Theme Presets**, and custom Pengu header badge styles.
+- **Battery & Privacy Friendly**: 100% open-source, zero ads, zero ad SDKs.
 
 ---
 
 ## 🛠️ Technology Stack
 
-- **Language:** 100% Pure Kotlin (Coroutines, Flow, Serialization)
+- **Language:** 100% Pure Kotlin (Coroutines, Flow, Kotlinx Serialization)
 - **UI Framework:** Android Jetpack Compose + Material Design 3 (Material You)
 - **Architecture:** Single Activity, Component-driven Architecture
 - **Dependency Injection:** Koin
+- **Networking & Verification:** OkHttp (HTTPS-only updates, SHA-256 + `PackageManager` signing certificate verification)
 - **Media Engine:** [youtubedl-android](https://github.com/yausername/youtubedl-android), [yt-dlp](https://github.com/yt-dlp/yt-dlp), [FFmpeg](https://ffmpeg.org/), [Aria2c](https://github.com/aria2/aria2)
-- **Database:** Android Room SQLite Database
-- **Storage & Preferences:** Tencent MMKV
+- **Database & Storage:** Android Room SQLite + Tencent MMKV
+- **Optional Self-Hosted Beta Server:** Zero-dependency Node.js server in [beta-backend/](beta-backend/README.md)
 
 ---
 
@@ -55,18 +55,21 @@
 - JDK 21
 - Android SDK (API Level 35)
 
-### Build Commands
-Clone the repository and build the APK using the Gradle wrapper:
+### Build & Test Commands
+Clone the repository, run unit tests, and build Release APKs using the Gradle wrapper:
 
 ```bash
 git clone https://github.com/Zeus756653658/Pengu.git
 cd Pengu
 
+# Run Android unit tests
+./gradlew testGenericReleaseUnitTest
+
 # Build Release APKs
 ./gradlew assembleGenericRelease
 ```
 
-The compiled APKs will be located in `app/build/outputs/apk/generic/release/` (and exported to `Desktop/Pengu_APKs/`).
+The compiled APKs will be located in `app/build/outputs/apk/generic/release/`.
 
 ---
 

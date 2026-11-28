@@ -142,3 +142,38 @@ fun connectWithBlank(s1: String, s2: String): String {
     val blank = if (s1.isEmpty() || s2.isEmpty()) "" else " "
     return s1 + blank + s2
 }
+
+private val hashtagPattern = Regex("""(?<!\S)#[\p{L}\p{N}_]+""")
+private val multiSpacePattern = Regex("""\s{2,}""")
+private val trackingParams = setOf("utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "igsh", "igshid", "si", "feature", "fbclid", "ref")
+
+/** Removes noisy hashtags and trailing separators while keeping original text if empty. */
+fun cleanMediaTitle(rawTitle: String): String {
+    val cleaned =
+        rawTitle
+            .replace(hashtagPattern, " ")
+            .replace(multiSpacePattern, " ")
+            .trim()
+            .trimEnd('-', '|', '•', ':')
+            .trim()
+    return cleaned.ifBlank { rawTitle.trim() }
+}
+
+/** Normalizes media URLs so shared/tracked variants of the same reel or video match cleanly. */
+fun normalizeMediaUrl(rawUrl: String): String {
+    val trimmed = rawUrl.trim().substringBefore('#')
+    if (trimmed.isEmpty()) return ""
+    val qIdx = trimmed.indexOf('?')
+    val base = (if (qIdx >= 0) trimmed.substring(0, qIdx) else trimmed).trimEnd('/')
+    if (qIdx < 0) return base.lowercase()
+    val keptParams =
+        trimmed
+            .substring(qIdx + 1)
+            .split('&')
+            .filter { param ->
+                val key = param.substringBefore('=').lowercase()
+                key.isNotBlank() && !trackingParams.contains(key)
+            }
+    return if (keptParams.isEmpty()) base.lowercase()
+    else "${base.lowercase()}?${keptParams.joinToString("&")}"
+}

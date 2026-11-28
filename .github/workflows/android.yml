@@ -5,6 +5,7 @@ on:
   push:
     tags:
       - 'v*'
+      - '[0-9]*'
 
 permissions:
   contents: write
@@ -45,11 +46,20 @@ jobs:
         keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
         keyPassword: ${{ secrets.KEY_PASSWORD }}
 
+    - name: Generate SHA-256 Checksums
+      run: |
+        cd app/build/outputs/apk/generic/release
+        sha256sum *.apk > SHA256SUMS.txt
+        for f in *.apk; do sha256sum "$f" > "${f}.sha256"; done
+
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: pengu-release-apks
-        path: app/build/outputs/apk/generic/release/*.apk
+        path: |
+          app/build/outputs/apk/generic/release/*.apk
+          app/build/outputs/apk/generic/release/*.sha256
+          app/build/outputs/apk/generic/release/SHA256SUMS.txt
         if-no-files-found: error
         retention-days: 20
 
@@ -59,6 +69,9 @@ jobs:
       with:
         name: Pengu ${{ github.ref_name }}
         body_path: release/changelog.md
-        files: app/build/outputs/apk/generic/release/*.apk
+        files: |
+          app/build/outputs/apk/generic/release/*.apk
+          app/build/outputs/apk/generic/release/*.sha256
+          app/build/outputs/apk/generic/release/SHA256SUMS.txt
         prerelease: ${{ contains(github.ref_name, '-') }}
         generate_release_notes: true

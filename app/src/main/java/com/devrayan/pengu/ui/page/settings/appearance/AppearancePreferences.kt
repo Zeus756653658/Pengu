@@ -137,6 +137,7 @@ fun AppearancePreferences(onNavigateBack: () -> Unit, onNavigateTo: (String) -> 
                         ActionButton(modifier = Modifier, downloadState = downloadState) {}
                     },
                 ) {}
+                com.devrayan.pengu.ui.component.PenguThemePresetsCard()
                 val pageCount = ColorList.size + 1
 
                 val pagerState =

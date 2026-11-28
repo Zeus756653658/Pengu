@@ -16,6 +16,7 @@ import com.devrayan.pengu.util.PreferenceUtil.updateLong
 import com.yausername.youtubedl_android.YoutubeDL
 import java.io.File
 import java.io.IOException
+import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
 import kotlinx.coroutines.Dispatchers
@@ -95,30 +96,83 @@ object UpdateUtil {
                 }
         }
 
-    private fun getLatestRelease(): Release? =
-        client.newCall(requestForReleases).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw IOException("GitHub API error: HTTP ${response.code}")
-            }
-            val releaseList = jsonFormat.decodeFromString<List<Release>>(response.body.string())
-            val stable = UPDATE_CHANNEL.getInt() == STABLE
-            releaseList
-                .filter { release ->
-                    release.draft != true &&
-                        release.resolvedVersion() != EMPTY_VERSION &&
-                        (!stable ||
-                            (release.preRelease != true &&
-                                release.resolvedVersion() is Version.Stable))
-                }
-                .maxByOrNull { it.resolvedVersion() }
-        }
+    fun isBetaOrPreRelease(release: Release): Boolean {
+        val tag = release.tagName.orEmpty().lowercase()
+        val name = release.name.orEmpty().lowercase()
+        val version = release.resolvedVersion()
+        return release.preRelease == true ||
+            version !is Version.Stable ||
+            tag.contains("beta") ||
+            tag.contains("alpha") ||
+            tag.contains("-rc") ||
+            name.contains("beta") ||
+            name.contains("alpha")
+    }
 
-    fun checkForUpdate(context: Context = App.context): Release? {
+    fun matchesChannel(release: Release, channel: Int): Boolean {
+        if (release.draft == true || release.resolvedVersion() == EMPTY_VERSION) return false
+        val isPre = isBetaOrPreRelease(release)
+        return when (channel) {
+            PRE_RELEASE -> isPre
+            else -> !isPre
+        }
+    }
+
+    fun selectLatestReleaseForChannel(releases: List<Release>, channel: Int): Release? =
+        releases.filter { matchesChannel(it, channel) }.maxByOrNull { it.resolvedVersion() }
+
+    private fun getLatestRelease(channel: Int = UPDATE_CHANNEL.getInt()): Release? {
+        val stable = channel == STABLE
+        val listResult =
+            runCatching {
+                client.newCall(requestForReleases).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        throw IOException("GitHub API error: HTTP ${response.code}")
+                    }
+                    val releaseList = jsonFormat.decodeFromString<List<Release>>(response.body.string())
+                    selectLatestReleaseForChannel(releaseList, channel)
+                }
+            }
+        val selected = listResult.getOrNull()
+        if (selected != null) return selected
+
+        if (stable) {
+            return client.newCall(requestForLatestRelease).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw listResult.exceptionOrNull()
+                        ?: IOException("GitHub API error: HTTP ${response.code}")
+                }
+                val latest = jsonFormat.decodeFromString<Release>(response.body.string())
+                latest.takeIf { matchesChannel(it, STABLE) }
+            }
+        }
+        return listResult.getOrThrow()
+    }
+
+    fun checkForUpdate(
+        context: Context = App.context,
+        channel: Int = UPDATE_CHANNEL.getInt(),
+    ): Release? {
         val currentVersion = context.getCurrentVersion()
-        val latestRelease = getLatestRelease() ?: return null
+        val latestRelease = getLatestRelease(channel) ?: return null
         val latestVersion = latestRelease.resolvedVersion()
         return if (currentVersion < latestVersion) latestRelease else null
     }
+
+    suspend fun fetchAllReleases(): Result<List<Release>> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                client.newCall(requestForReleases).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        throw IOException("GitHub API error: HTTP ${response.code}")
+                    }
+                    jsonFormat
+                        .decodeFromString<List<Release>>(response.body.string())
+                        .filter { it.draft != true }
+                        .sortedByDescending { it.resolvedVersion() }
+                }
+            }
+        }
 
     private fun Context.getCurrentVersion(): Version =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -197,50 +251,219 @@ object UpdateUtil {
         } ?: preferredPool.firstOrNull()
     }
 
+    internal fun isHttpsUrl(url: String): Boolean =
+        url.trim().startsWith("https://", ignoreCase = true)
+
+    internal fun requireHttpsUrl(url: String): String {
+        val trimmed = url.trim()
+        if (!isHttpsUrl(trimmed)) {
+            throw SecurityException("Only HTTPS downloads are permitted for Pengu updates")
+        }
+        return trimmed
+    }
+
+    internal fun extractSha256ForAsset(releaseBody: String?, assetName: String?): String? {
+        if (releaseBody.isNullOrBlank()) return null
+        val shaRegex = Regex("""([a-fA-F0-9]{64})""")
+        if (!assetName.isNullOrBlank()) {
+            val specificLine =
+                releaseBody.lineSequence().firstOrNull { line ->
+                    line.contains(assetName, ignoreCase = true) && shaRegex.containsMatchIn(line)
+                }
+            if (specificLine != null) {
+                return shaRegex.find(specificLine)?.groupValues?.get(1)?.lowercase()
+            }
+        }
+        val labeledLine =
+            releaseBody.lineSequence().firstOrNull { line ->
+                (line.contains("sha256", ignoreCase = true) ||
+                    line.contains("sha-256", ignoreCase = true)) && shaRegex.containsMatchIn(line)
+            }
+        return labeledLine?.let { shaRegex.find(it)?.groupValues?.get(1)?.lowercase() }
+    }
+
+    fun computeSha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buf = ByteArray(8_192)
+            var read = input.read(buf)
+            while (read != -1) {
+                digest.update(buf, 0, read)
+                read = input.read(buf)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    data class CertVerifyResult(
+        val matched: Boolean,
+        val installedSha256: String,
+        val candidateSha256: String,
+        val reason: String? = null,
+    )
+
+    @Suppress("DEPRECATION")
+    private fun extractPackageCertSha256s(context: Context, archivePath: String?): Set<String> {
+        val pm = context.packageManager
+        val signatures =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val flags = PackageManager.GET_SIGNING_CERTIFICATES
+                val pkgInfo =
+                    if (archivePath == null) pm.getPackageInfo(context.packageName, flags)
+                    else pm.getPackageArchiveInfo(archivePath, flags)
+                pkgInfo?.signingInfo?.let { info ->
+                    if (info.hasMultipleSigners()) info.apkContentsSigners
+                    else info.signingCertificateHistory
+                }
+            } else {
+                val flags = PackageManager.GET_SIGNATURES
+                val pkgInfo =
+                    if (archivePath == null) pm.getPackageInfo(context.packageName, flags)
+                    else pm.getPackageArchiveInfo(archivePath, flags)
+                pkgInfo?.signatures
+            } ?: return emptySet()
+
+        val md = MessageDigest.getInstance("SHA-256")
+        return signatures
+            .map { sig ->
+                md.reset()
+                md.digest(sig.toByteArray()).joinToString("") { "%02x".format(it) }
+            }
+            .toSet()
+    }
+
+    fun verifyApkSigningCertificate(context: Context, apkFile: File): CertVerifyResult {
+        val installedDigests = extractPackageCertSha256s(context, archivePath = null)
+        val candidateDigests = extractPackageCertSha256s(context, archivePath = apkFile.absolutePath)
+        val installedFirst = installedDigests.firstOrNull().orEmpty()
+        val candidateFirst = candidateDigests.firstOrNull().orEmpty()
+
+        if (candidateDigests.isEmpty()) {
+            return CertVerifyResult(
+                matched = false,
+                installedSha256 = installedFirst,
+                candidateSha256 = "",
+                reason = "Downloaded APK has no readable signing certificate",
+            )
+        }
+        val intersection = installedDigests.intersect(candidateDigests)
+        val matched = installedDigests.isEmpty() || intersection.isNotEmpty()
+        return CertVerifyResult(
+            matched = matched,
+            installedSha256 = installedFirst,
+            candidateSha256 = candidateFirst,
+            reason =
+                if (matched) null
+                else "APK signing certificate does not match installed Pengu signature",
+        )
+    }
+
+    fun getCachedApkFile(context: Context = App.context): File = context.getLatestApk()
+
     suspend fun downloadApk(
         context: Context = App.context,
         release: Release,
+        expectedSha256: String? = null,
+        extraHeaders: Map<String, String> = emptyMap(),
     ): Flow<DownloadStatus> =
         withContext(Dispatchers.IO) {
             val latestApk = context.getLatestApk()
             latestApk.parentFile?.mkdirs()
 
+            val selectedAsset =
+                selectApkAsset(release.assets)
+                    ?: throw IOException(
+                        "No compatible APK asset found in release ${release.displayTitle()}"
+                    )
+            val targetUrl = requireHttpsUrl(selectedAsset.browserDownloadUrl.orEmpty())
+
+            val resolvedExpectedSha =
+                expectedSha256?.takeIf { it.isNotBlank() }?.lowercase()
+                    ?: selectedAsset.digest?.removePrefix("sha256:")?.takeIf { it.length == 64 }?.lowercase()
+                    ?: extractSha256ForAsset(release.body, selectedAsset.name)
+                    ?: fetchCompanionSha256(release.assets, selectedAsset.name)
+
             val apkVersion =
-                if (latestApk.exists()) {
-                    context.packageManager
-                        .getPackageArchiveInfo(latestApk.absolutePath, 0)
-                        ?.versionName
-                        .toVersion()
+                if (latestApk.exists() && latestApk.length() > 0L) {
+                    runCatching {
+                            context.packageManager
+                                .getPackageArchiveInfo(latestApk.absolutePath, 0)
+                                ?.versionName
+                                .toVersion()
+                        }
+                        .getOrDefault(EMPTY_VERSION)
                 } else {
                     EMPTY_VERSION
                 }
 
+            if (latestApk.exists() && apkVersion == EMPTY_VERSION) {
+                latestApk.delete()
+            }
+
             Log.d(TAG, "Cached APK version: $apkVersion")
 
             val targetVersion = release.resolvedVersion()
-            if (apkVersion >= targetVersion && targetVersion != EMPTY_VERSION) {
-                return@withContext flow { emit(DownloadStatus.Finished(latestApk)) }
+            if (apkVersion == targetVersion && targetVersion != EMPTY_VERSION && latestApk.exists()) {
+                val cert = verifyApkSigningCertificate(context, latestApk)
+                val sha = computeSha256(latestApk)
+                val shaMatches = resolvedExpectedSha == null || resolvedExpectedSha.equals(sha, ignoreCase = true)
+                if (cert.matched && shaMatches) {
+                    return@withContext flow {
+                        emit(
+                            DownloadStatus.Finished(
+                                file = latestApk,
+                                sha256Hex = sha,
+                                certVerified = true,
+                            )
+                        )
+                    }
+                } else {
+                    latestApk.delete()
+                }
             }
 
-            val targetUrl =
-                selectApkAsset(release.assets)?.browserDownloadUrl
-                    ?: throw IOException(
-                        "No compatible APK asset found in release ${release.displayTitle()}"
-                    )
             val request =
                 Request.Builder()
                     .url(targetUrl)
                     .header("User-Agent", userAgent)
+                    .apply { extraHeaders.forEach { (k, v) -> header(k, v) } }
                     .build()
             val response = client.newCall(request).execute()
             if (!response.isSuccessful) {
                 response.close()
                 throw IOException("Failed to download APK: HTTP ${response.code}")
             }
-            response.body.downloadFileWithProgress(latestApk)
+            response.body.downloadFileWithVerify(
+                context = context,
+                saveFile = latestApk,
+                expectedSha256 = resolvedExpectedSha,
+            )
         }
 
-    private fun ResponseBody.downloadFileWithProgress(saveFile: File): Flow<DownloadStatus> =
+    private fun fetchCompanionSha256(assets: List<AssetsItem>?, apkName: String?): String? {
+        if (assets.isNullOrEmpty() || apkName.isNullOrBlank()) return null
+        val shaAsset =
+            assets.firstOrNull {
+                val n = it.name.orEmpty()
+                n.equals("$apkName.sha256", ignoreCase = true) ||
+                    n.equals("SHA256SUMS.txt", ignoreCase = true) ||
+                    n.equals("checksums.sha256", ignoreCase = true)
+            } ?: return null
+        val url = shaAsset.browserDownloadUrl?.takeIf { isHttpsUrl(it) } ?: return null
+        return runCatching {
+            val req = Request.Builder().url(url).header("User-Agent", userAgent).build()
+            client.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return null
+                extractSha256ForAsset(resp.body?.string(), apkName)
+            }
+        }.getOrNull()
+    }
+
+    private fun ResponseBody.downloadFileWithVerify(
+        context: Context,
+        saveFile: File,
+        expectedSha256: String?,
+    ): Flow<DownloadStatus> =
         flow {
                 emit(DownloadStatus.Progress(0))
 
@@ -248,7 +471,7 @@ object UpdateUtil {
                 var completed = false
 
                 try {
-                    this@downloadFileWithProgress.use { body ->
+                    this@downloadFileWithVerify.use { body ->
                         body.byteStream().use { inputStream ->
                             tempFile.outputStream().use { outputStream ->
                                 val totalBytes = body.contentLength()
@@ -285,13 +508,29 @@ object UpdateUtil {
                         }
                     }
 
+                    emit(DownloadStatus.Verifying)
+                    val actualSha256 = computeSha256(tempFile)
+                    if (!expectedSha256.isNullOrBlank() && !expectedSha256.equals(actualSha256, ignoreCase = true)) {
+                        throw SecurityException("SHA-256 verification failed: expected $expectedSha256 but got $actualSha256")
+                    }
+                    val certResult = verifyApkSigningCertificate(context, tempFile)
+                    if (!certResult.matched) {
+                        throw SecurityException(certResult.reason ?: "APK signing certificate mismatch")
+                    }
+
                     if (saveFile.exists()) saveFile.delete()
                     if (!tempFile.renameTo(saveFile)) {
                         tempFile.copyTo(saveFile, overwrite = true)
                         tempFile.delete()
                     }
                     completed = true
-                    emit(DownloadStatus.Finished(saveFile))
+                    emit(
+                        DownloadStatus.Finished(
+                            file = saveFile,
+                            sha256Hex = actualSha256,
+                            certVerified = certResult.matched,
+                        )
+                    )
                 } finally {
                     if (!completed) {
                         tempFile.delete()
@@ -303,6 +542,7 @@ object UpdateUtil {
 
     @Serializable
     data class Release(
+        val id: Long = 0L,
         @SerialName("html_url") val htmlUrl: String? = null,
         @SerialName("tag_name") val tagName: String? = null,
         val name: String? = null,
@@ -316,6 +556,7 @@ object UpdateUtil {
 
     @Serializable
     data class AssetsItem(
+        val id: Long = 0L,
         val name: String? = null,
         @SerialName("content_type") val contentType: String? = null,
         val size: Int? = null,
@@ -323,6 +564,7 @@ object UpdateUtil {
         @SerialName("created_at") val createdAt: String? = null,
         @SerialName("updated_at") val updatedAt: String? = null,
         @SerialName("browser_download_url") val browserDownloadUrl: String? = null,
+        val digest: String? = null,
     )
 
     sealed class DownloadStatus {
@@ -330,7 +572,13 @@ object UpdateUtil {
 
         data class Progress(val percent: Int) : DownloadStatus()
 
-        data class Finished(val file: File) : DownloadStatus()
+        data object Verifying : DownloadStatus()
+
+        data class Finished(
+            val file: File,
+            val sha256Hex: String = "",
+            val certVerified: Boolean = true,
+        ) : DownloadStatus()
     }
 
     private val pattern = Pattern.compile("""v?(\d+)\.(\d+)\.(\d+)(-(\w+)\.(\d+))?""")
