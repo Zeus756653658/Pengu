@@ -1,52 +1,53 @@
-# Contributing
+# Contributing to Pengu
 
-Before reading, you may know what [yt-dlp](https://github.com/yt-dlp/yt-dlp) is and what it does. In short, it's a CLI (Command Line Interface) program written in python, which lets you download videos from [1000+ websites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md).
+Thank you for helping improve **Pengu**, maintained by **Dev Rayan**. Pengu pairs a modern Jetpack Compose Material Design 3 interface with [yt-dlp](https://github.com/yt-dlp/yt-dlp), [FFmpeg](https://ffmpeg.org/), and [Aria2c](https://github.com/aria2/aria2).
 
-For bug reports and feature requests, please search in issues first (including the closed ones). If there're no duplicates, feel free to [submit an issue](https://github.com/Zeus756653658/Pengu/issues/new) with an issue template.
+For issues and pull requests, please search existing issues first (including closed ones). If there are no duplicates, open a [GitHub Issue](https://github.com/Zeus756653658/Pengu/issues/new) with reproduction details.
 
-**We'll probably ignore and close your issue if it's not using the existing templates or doesn't contain sufficient description.**
+For discussions or feedback, visit [Pengu on GitHub](https://github.com/Zeus756653658/Pengu).
 
-For questions or any other ideas to improve, please open a discussion or issue on [Pengu GitHub](https://github.com/Zeus756653658/Pengu).
+---
 
+## Bug Reports
 
-## Disclaimer
+Include your Pengu version, Android API level, the failing URL or custom `yt-dlp` command template, and exact reproduction steps in a GitHub Issue.
 
-This is a toy project I use to learn Android development. Please do not have any expectations or assumptions about the quality of the code.
+---
 
+## Beta Testing & Release Verification
 
-## Bug Report
+Pengu maintains separate release channels:
+- **Stable Channel:** Production builds only (`Version.Stable`).
+- **Beta Channel:** Open Beta & Closed Beta experimental builds (`-beta.*`).
 
-When submitting a bug report, please make sure your issue contains **enough** information for reproducing the problem, including the options or the custom command being used, the link to the video, and other fields in the issue template.
+Contributors modifying update or download logic must preserve:
+- Strict channel separation (never automatically switching a user's selected update channel).
+- **HTTPS-only** (`https://`) download enforcement.
+- **SHA-256** checksum validation and `PackageManager` APK signing certificate comparison.
+- Explicit user confirmation via Android's standard package installer dialog.
 
+---
 
+## Feature Requests
 
-## Feature Request
+Pengu aims to remain a clean, dependable Android media downloader & player powered by `yt-dlp`. Requests that depend on unsupported extractors outside `yt-dlp` may not be accepted; advanced flags can already be tested in Pengu's **Custom Command Mode**.
 
-Pengu is and will remain a clean, modern GUI for yt-dlp, providing the core functionality of yt-dlp cleanly without clutter. Thus, **we'll not take requests for features that yt-dlp does not support.**
+---
 
-The app has two download modes: 
+## Pull Requests
 
-- General mode: Save as audio, download playlist, and many other options that can be used individually or combined for normal download tasks. Once the download is complete, Pengu will scan the files into the system media library, and store them in the download history.
-- Custom command mode: For advanced usage of yt-dlp, a user can create and store multiple command templates in the app, then select and use one of them directly to execute the yt-dlp command like in a terminal. In this mode, all of the GUI options and features in the general mode will be disabled.
+1. Comment on the issue you plan to work on or open one first so contributors do not duplicate effort.
+2. Keep existing Room, MMKV, `yt-dlp`, `FFmpeg`, and `Aria2c` architecture intact.
+3. Verify your changes before submitting:
+   ```bash
+   ./gradlew testGenericReleaseUnitTest
+   ./gradlew compileGenericReleaseKotlin
+   ```
 
-Since most of the functions can be implemented in custom command mode, the "feature request" would be treated as adding a shortcut to the general mode. However, not all feature requests will be accepted and implemented in the app. [Why not add an option for that?](https://neugierig.org/software/blog/2018/07/options.html)
-
-
-
-## Pull Request
-
-If you wish to contribute to the project by submitting code directly, please first leave a comment under the relevant issue or file a new issue, describe the changes you are about to make.
-
-To avoid multiple pull requests resolving the same issue, let others know you are working on it by saying so in a comment, or ask the issue to be assigned to yourself.
-
-
-
-## New contributors
-
-Scan through our [existing issues](https://github.com/Zeus756653658/Pengu/issues) to find one that interests you. The [👋 good first issue](https://github.com/Zeus756653658/Pengu/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) is a good place to start exploring issues that are up-for-grab for newcomers. (Do not hesitate to ask for more details or clarifying questions on the issue!)
-
-
+---
 
 ## Building From Source
 
-Fork this project, import and compile it with the latest version of [Android Studio Canary](https://developer.android.com/studio/preview). 
+1. Fork [Pengu](https://github.com/Zeus756653658/Pengu).
+2. Open in Android Studio Ladybug / Meerkat or newer with **JDK 21** and **Android SDK API 35**.
+3. Run unit tests cleanly before submitting PRs.

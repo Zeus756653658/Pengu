@@ -59,7 +59,7 @@ representative at an online or offline event.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the repository maintainers via
+reported to Dev Rayan and the project maintainers via
 https://github.com/Zeus756653658/Pengu/issues.
 All complaints will be reviewed and investigated promptly and fairly.
 
